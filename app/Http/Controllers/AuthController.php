@@ -12,42 +12,61 @@ class AuthController extends Controller
 {
     public function prosesLogin(Request $request)
     {
-        if(Auth::attempt($request->only('email', 'password'))){
+        if (Auth::attempt($request->only('email', 'password'))) {
             return redirect()->route('dashboard');
         }
         return redirect()->route('login')->with('error', 'Email atau Password Salah');
     }
+
     public function showRegister()
     {
         return view('auth.register');
     }
+
     public function dashboard()
     {
-        return view('dashboard');
+        $role = Auth::user()->role;
+
+        return match($role) {
+            'admin'   => view('dashboard.admin'),
+            'teacher' => view('dashboard.teacher'),
+            'student' => view('dashboard.student'),
+            'parent'  => view('dashboard.parent'),
+            default   => redirect('/login'),
+        };
     }
+
     public function register(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'name' => 'required|string|max:225',
-            'username' => 'required|string|max:15',
-            'email' => 'required|string|email|max:225|unique:users',
+            'name'     => 'required|string|max:225',
+            // 'username' => 'required|string|max:15|unique:users',
+            'email'    => 'required|string|email|max:225|unique:users',
             'password' => 'required|string|min:6|confirmed',
-            'role' => 'required|in:admin,teacher,student,parent',
+            'role'     => 'required|in:admin,teacher,student,parent',
         ]);
 
-        if ($validator->fails()){
+        if ($validator->fails()) {
             return redirect()->back()->withErrors($validator)->withInput();
         }
 
         $user = User::create([
-            'name' => $request->name,
-            'username' => $request->username,
-            'email' => $request->email,
+            'name'     => $request->name,
+            // 'username' => $request->username,
+            'email'    => $request->email,
             'password' => Hash::make($request->password),
-            'role' => $request->role,
+            'role'     => $request->role,
         ]);
 
         Auth::login($user);
-        return redirect('/dashboard')->with('Success', 'Akun berhasil dibuat dan Anda telah masuk.');
+        return redirect('/dashboard')->with('success', 'Akun berhasil dibuat dan Anda telah masuk.');
     }
+
+    // public function logout(Request $request)
+    // {
+    //     Auth::logout();
+    //     $request->session()->invalidate();
+    //     $request->session()->regenerateToken();
+    //     return redirect()->route('login');
+    // }
 }
