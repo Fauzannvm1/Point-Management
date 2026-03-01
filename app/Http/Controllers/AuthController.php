@@ -16,6 +16,22 @@ class AuthController extends Controller
             return redirect()->route('dashboard');
         }
         return redirect()->route('login')->with('error', 'Email atau Password Salah');
+
+        if (Auth::attempt($credentials)) {
+
+            $role = Auth::user()->role;
+
+            if ($role == 'admin') {
+                return redirect('/admin/dashboard');
+            } elseif ($role == 'teacher') {
+                return redirect('/teacher/dashboard');
+            } elseif ($role == 'student') {
+                return redirect('/student/dashboard');
+            } elseif ($role == 'parent') {
+                return redirect('/parent/dashboard');
+            }
+
+        }
     }
     public function showRegister()
     {
@@ -23,7 +39,19 @@ class AuthController extends Controller
     }
     public function dashboard()
     {
-        return view('dashboard');
+        $role = Auth::user()->role;
+
+        if ($role == 'admin') {
+            return view('dashboard.admin');
+        } elseif ($role == 'teacher') {
+            return view('dashboard.teacher');
+        } elseif ($role == 'student') {
+            return view('dashboard.student');
+        } elseif ($role == 'parent') {
+            return view('dashboard.parent');
+        }
+
+        abort(403);
     }
     public function register(Request $request)
     {
