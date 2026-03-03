@@ -130,7 +130,7 @@
                         </div>
                         <span class="text-xs text-green-600 bg-green-50 px-2 py-1 rounded-lg font-medium">+4 this month</span>
                     </div>
-                    <p class="text-3xl font-bold text-slate-900 mono">128</p>
+                    <p class="text-3xl font-bold text-slate-900 mono">{{ $totalStudents }}</p>
                     <p class="text-sm text-slate-500 mt-1">Total Students</p>
                 </div>
 
