@@ -13,8 +13,11 @@ return new class extends Migration
     {
         Schema::create('point_categories', function(Blueprint $table){
             $table->id();
-            $table->string('name');
+            $table->string('name', 100);
+            $table->enum('type', ['positive', 'negative'])->default('positive');
+            $table->integer('default_points')->default(0);
             $table->string('description')->nullable();
+            $table->string('color', 30)->default('indigo');
             $table->timestamps();
         });
     }
