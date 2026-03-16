@@ -6,17 +6,25 @@ use Illuminate\Database\Eloquent\Model;
 
 class Point extends Model
 {
-    protected $fillable = ['student_id', 'teacher_id', 'category_id', 'point', 'note'];
+    protected $fillable = [
+        'student_id',
+        'teacher_subject_id',
+        'point',
+        'description',
+        'point_date',
+    ];
 
-    public function student() {
-        return $this->belongsTo(User::class, 'student_id');
+    protected $casts = [
+        'point_date' => 'date',
+    ];
+
+    public function student()
+    {
+        return $this->belongsTo(Student::class, 'student_id');
     }
 
-    public function teacher() {
-        return $this->belongsTo(User::class, 'teacher_id');
-    }
-
-    public function category() {
-        return $this->belongsTo(PointCategory::class);
+    public function teacherSubject()
+    {
+        return $this->belongsTo(TeacherSubject::class, 'teacher_subject_id');
     }
 }

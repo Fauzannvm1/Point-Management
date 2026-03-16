@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class Classes extends Model
 {
-    protected $table = 'classes'; // 'classes' is a reserved word, explicit table needed
+    protected $table = 'classes'; 
 
     protected $fillable = ['name', 'major_id'];
 
@@ -20,8 +20,4 @@ class Classes extends Model
         return $this->hasMany(Student::class, 'class_id');
     }
 
-    public function teacherSubjects()
-    {
-        return $this->hasMany(TeacherSubject::class, 'class_id');
-    }
 }

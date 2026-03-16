@@ -5,4 +5,4 @@
     <li>View Child Points</li>
 </ul>
 <br>
-<a href="{{ route ('login') }}">Log Out</a>
+<a href="{{ route ('logout') }}">Log Out</a>

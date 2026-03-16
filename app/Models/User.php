@@ -51,13 +51,17 @@ class User extends Authenticatable
     // Get the student profile linked to this user
     public function student()
     {
-        return $this->hasOne(Student::class, 'student_id');
+        return $this->hasOne(Student::class, 'user_id');
     }
 
     // Get the teacher profile linked to this user
     public function teacher()
     {
-        return $this->hasOne(Teacher::class, 'student_id');
+        return $this->hasOne(Teacher::class, 'user_id');
+    }
+    public function parent()
+    {
+        return $this->hasOne(Parents::class, 'user_id');
     }
 
     /**
@@ -79,5 +83,15 @@ class User extends Authenticatable
     public function children()
     {
         return $this->belongsToMany(User::class, 'parent_student', 'parent_id', 'student_id');
+    }
+    
+    public function isAdmin():   bool { return $this->role === 'admin'; }
+    public function isTeacher(): bool { return $this->role === 'teacher'; }
+    public function isStudent(): bool { return $this->role === 'student'; }
+    public function isParent():  bool { return $this->role === 'parent'; }
+
+    public function dashboardRoute(): string
+    {
+        return '/dashboard';
     }
 }

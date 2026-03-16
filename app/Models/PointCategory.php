@@ -6,9 +6,14 @@ use Illuminate\Database\Eloquent\Model;
 
 class PointCategory extends Model
 {
-    protected $fillable = ['name', 'description'];
+    protected $fillable = ['name', 'type', 'default_points', 'description', 'color',];
 
     public function points() {
-        return $this->belongsTo(Point::class, 'category_id');
-    }    
+        return $this->hasMany(Point::class, 'category_id');
+    }
+    public function tasks() 
+    {
+        return $this->hasMany(Task::class, 'point_category_id');
+    }
 }
+//unused
