@@ -20,10 +20,12 @@
 use App\Http\Controllers\AuthController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\TaskController;
+use App\Http\Controllers\ClassController;
 
 // Guest-only routes (redirect to dashboard if already logged in)
 Route::middleware('guest')->group(function () {
-    Route::get('/',          fn() => view('auth.login'))->name('login');
+    Route::get('/',          fn() => view('index'))->name('login');
+    Route::get('/login', [AuthController::class, 'login'])->name('login');
     Route::post('/proseslogin', [AuthController::class, 'prosesLogin'])->name('proseslogin');
     Route::get('/register',  [AuthController::class, 'showRegister'])->name('register');
     Route::post('/register', [AuthController::class, 'register']);
@@ -33,6 +35,7 @@ Route::middleware('guest')->group(function () {
 Route::middleware('auth')->group(function () {
     Route::get('/dashboard', [AuthController::class, 'dashboard'])->name('dashboard');
     Route::post('/logout',   [AuthController::class, 'logout'])->name('logout');
+    Route::get('/task/{task}/detail', [TaskController::class, 'detail']);
 
     // User management (admin only)
     Route::middleware('role:admin')->group(function () {
@@ -65,27 +68,66 @@ Route::middleware('auth')->group(function () {
         Route::get('/admin/students-for-points',  [AuthController::class, 'getStudentsForPoints']);
         Route::post('/admin/points',              [AuthController::class, 'storePoint']);
 
-        // Subjects (already have CRUD, just making sure)
-        Route::get('/subjects',              [AuthController::class, 'getSubjects']);
-        Route::post('/subjects',             [AuthController::class, 'storeSubject']);
-        Route::put('/subjects/{subject}',    [AuthController::class, 'updateSubject']);
-        Route::delete('/subjects/{subject}', [AuthController::class, 'destroySubject']);
+        Route::get('/admin/classes',              [TaskController::class, 'classesIndex']);
+        Route::post('/admin/classes',             [TaskController::class, 'classesStore']);
+        Route::put('/admin/classes/{class}',      [TaskController::class, 'classesUpdate']);
+        Route::delete('/admin/classes/{class}',   [TaskController::class, 'classesDestroy']);
     });
 
     Route::middleware('role:teacher')->prefix('teacher')->group(function () {
-        Route::get('/tasks',                                   [TaskController::class, 'index']);
-        Route::post('/tasks',                                  [TaskController::class, 'store']);
-        Route::put('/tasks/{task}',                            [TaskController::class, 'update']);
-        Route::delete('/tasks/{task}',                         [TaskController::class, 'destroy']);
-        Route::get('/tasks/{task}/submissions',                [TaskController::class, 'submissions']);
-        Route::put('/submissions/{submission}/correcting',     [TaskController::class, 'markCorrecting']);
-        Route::put('/submissions/{submission}/grade',          [TaskController::class, 'grade']);
-    });
+ 
+        // Tasks
+        Route::get('/tasks',             [TaskController::class, 'index']);
+        Route::get('/tasks/create',      [TaskController::class, 'create']);
+        Route::post('/tasks',            [TaskController::class, 'store']);
+        Route::post('/tasks/{task}',     [TaskController::class, 'update']);  
+        Route::delete('/tasks/{task}',   [TaskController::class, 'destroy']);
+ 
+        // Submissions
+        Route::get('/submissions',                           [TaskController::class, 'submissionIndex']);
+        Route::get('/tasks/{task}/submissions',              [TaskController::class, 'submissionIndex']);
+        Route::post('/submissions/{submission}/correcting',  [TaskController::class, 'markCorrecting']);
+        Route::post('/submissions/{submission}/status',      [TaskController::class, 'submissionSetStatus']);
+        Route::post('/submissions/{submission}/grade',       [TaskController::class, 'grade']);
+ 
+        // Subjects
+        Route::get('/subjects',          [TaskController::class, 'subjectIndex']);
+        Route::get('/subjects/create',   [TaskController::class, 'subjectCreate']);
+        Route::post('/subjects',         [TaskController::class, 'subjectStore']);
+        Route::delete('/subjects/{id}',  [TaskController::class, 'subjectDestroy']);
+ 
+        // Points
+        Route::get('/points',            [TaskController::class, 'teacherPoints']);
+        Route::get('/points/stats',      [TaskController::class, 'teacherPointStats']);
+ 
+        // Report
+        Route::get('/report',            [TaskController::class, 'report']);
 
-    Route::middleware('role:student')->prefix('student')->group(function () {
-        Route::get('/tasks',                                   [TaskController::class, 'available']);
-        Route::post('/tasks/{task}/take',                      [TaskController::class, 'take']);
-        Route::put('/submissions/{submission}/submit',         [TaskController::class, 'submit']);
-        Route::get('/my-submissions',                          [TaskController::class, 'mySubmissions']);
+        // Class
+        Route::get   ('classes',                                 [ClassController::class, 'teacherIndex'])          ->name('classes.index');
+        Route::get   ('classes/{id}',                            [ClassController::class, 'teacherShow'])           ->name('classes.show');
+        Route::get   ('classes/{id}/code',                       [ClassController::class, 'teacherCode'])           ->name('classes.code');
+        Route::get   ('classes/{id}/students',                   [ClassController::class, 'teacherStudents'])       ->name('classes.students');
+        Route::delete('classes/{classId}/students/{studentId}',  [ClassController::class, 'teacherRemoveStudent'])  ->name('classes.students.remove');
     });
+ 
+    // ── Student ────────────────────────────────────────────────────────────
+    Route::middleware('role:student')->prefix('student')->group(function () {
+ 
+        // Route::get('/dashboard',                  [TaskController::class, 'studentDashboard']);
+        Route::get('/tasks',                      [TaskController::class, 'studentTasks']);
+        Route::get('/my-submissions',             [TaskController::class, 'mySubmissions']);
+
+        Route::post('/tasks/{task}/accept',       [TaskController::class, 'studentAccept']);
+        Route::post('/tasks/{task}/take',         [TaskController::class, 'studentAccept']);  
+        Route::post('/tasks/{task}/submit',       [TaskController::class, 'studentSubmit']);
+
+        Route::get('/points',                     [TaskController::class, 'studentPoints']);
+        Route::get('/points/stats',               [TaskController::class, 'studentPointStats']);
+
+        Route::get('classes',                     [ClassController::class, 'index'])->name('classes.index');
+        Route::post('classes/join',               [ClassController::class, 'studentJoin'])->name('classes.join');
+        Route::delete('classes/{id}/leave',       [ClassController::class, 'studentLeave'])->name('classes.leave');
+    });
+    Route::middleware('role:teacher')->get('/admin/classes', [TaskController::class, 'classesIndex']);
 });

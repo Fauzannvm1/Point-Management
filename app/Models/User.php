@@ -48,6 +48,18 @@ class User extends Authenticatable
         ];
     }
 
+    /**
+     * @method bool isAdmin()
+     * @method bool isTeacher()
+     * @method bool isStudent()
+     * @method bool isParent()
+     *
+     * @property string $name
+     * @property string $email
+     * @property string $username
+     * @property string $role
+     */
+
     // Get the student profile linked to this user
     public function student()
     {

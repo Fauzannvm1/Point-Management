@@ -23,6 +23,10 @@ class TaskSubmission extends Model
     { 
         return $this->belongsTo(Student::class); 
     }
+    public function files()
+    {
+        return $this->hasMany(SubmissionFile::class);
+    }
 
     public function isGraded():     bool { return $this->status === 'graded'; }
     public function isSubmitted():  bool { return $this->status === 'submitted'; }

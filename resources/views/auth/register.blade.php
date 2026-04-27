@@ -71,7 +71,7 @@
                             </div>
                             <div class="">
                                 <p>Sudah punya akun?</p>
-                                <a href="{{ route ('login') }}">LOG IN</a>
+                                <a href="{{ url ('/login') }}">LOG IN</a>
                             </div>
                         </form>
                     </div>

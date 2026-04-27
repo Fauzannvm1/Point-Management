@@ -3,11 +3,13 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\TaskImage;
+use App\Models\TaskAttachment;
 
 class Task extends Model
 {
     protected $fillable = [
-        'teacher_subject_id', 'point_category_id',
+        'teacher_subject_id',
         'title', 'description', 'due_date', 'max_grade',
     ];
 
@@ -32,5 +34,17 @@ class Task extends Model
     public function isExpired(): bool
     {
         return $this->due_date && $this->due_date->isPast();
+    }
+    public function images()
+    {
+        return $this->hasMany(TaskImage::class);
+    }
+    public function attachments()
+    {
+        return $this->hasMany(TaskAttachment::class);
+    }
+    public function files()
+    {
+        return $this->hasMany(SubmissionFile::class);
     }
 }

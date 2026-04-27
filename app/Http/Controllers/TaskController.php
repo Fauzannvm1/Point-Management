@@ -1,290 +1,790 @@
 <?php
-// app/Http/Controllers/TaskController.php
 
 namespace App\Http\Controllers;
 
 use App\Models\Task;
 use App\Models\TaskSubmission;
-use App\Models\Point;
-use App\Models\Student;
 use App\Models\TeacherSubject;
+use App\Models\Point;
+use App\Models\Subject;
+use App\Models\Classes;   // adjust if named differently, e.g. SchoolClass
+use App\Models\Student;
+use App\Models\User;
+use App\Models\Teacher;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 
 class TaskController extends Controller
 {
-    // =========================================================
-    // TEACHER METHODS
-    // =========================================================
+    //  PRIVATE HELPERS
 
-    /**
-     * GET /teacher/tasks
-     * List all tasks created by the logged-in teacher
-     */
-    public function index()
+    private function teacher()
     {
         $teacher = Auth::user()->teacher;
+        if (!$teacher) {
+            $this->forceLogout();
+            abort(403, 'Teacher profile not found.');
+        }
+        return $teacher;
+    }
 
-        $tasks = Task::whereHas('teacherSubject', function ($q) use ($teacher) {
-                        $q->where('teacher_id', $teacher->id);
-                    })
-                    ->with(['teacherSubject.subject', 'category'])
-                    ->withCount('submissions')
-                    ->latest()
-                    ->get();
+    private function student()
+    {
+        $student = Auth::user()->student;
+        if (!$student) {
+            $this->forceLogout();
+            abort(403, 'Student profile not found.');
+        }
+        return $student;
+    }
+
+    private function forceLogout()
+    {
+        Auth::logout();
+        request()->session()->invalidate();
+        request()->session()->regenerateToken();
+    }
+
+    private function teacherSubjectIds()
+    {
+        return TeacherSubject::where('teacher_id', $this->teacher()->id)->pluck('id');
+    }
+
+    private function authorizeTeacherSubject($teacherSubjectId)
+    {
+        $owns = TeacherSubject::where('id', $teacherSubjectId)
+                              ->where('teacher_id', $this->teacher()->id)
+                              ->exists();
+        if (!$owns) abort(403, 'Unauthorized subject.');
+    }
+
+    private function authorizeTask(Task $task)
+    {
+        if ($task->teacherSubject->teacher_id !== $this->teacher()->id) {
+            abort(403, 'Unauthorized task.');
+        }
+    }
+
+    private function authorizeSubmissionAsTeacher(TaskSubmission $submission)
+    {
+        if ($submission->task->teacherSubject->teacher_id !== $this->teacher()->id) {
+            abort(403, 'Unauthorized.');
+        }
+    }
+
+    private function handleTaskFiles(Task $task, Request $request)
+    {
+        if (!$request->hasFile('files')) return;
+
+        foreach ($request->file('files') as $file) {
+            $mime = $file->getMimeType();
+            $path = $file->store('task-files', 'public');
+
+            if (str_starts_with($mime, 'image/')) {
+                $task->images()->create([
+                    'path'          => $path,
+                    'original_name' => $file->getClientOriginalName(),
+                ]);
+            } else {
+                $task->attachments()->create([
+                    'path'          => $path,
+                    'original_name' => $file->getClientOriginalName(),
+                ]);
+            }
+        }
+    }
+
+    //  MAIN DASHBOARD   GET /dashboard
+
+    public function dashboard()
+    {
+        $user = Auth::user();
+
+        return match ($user->role) {
+            'teacher' => $this->teacherDashboard(),
+            'student' => $this->studentDashboardView(),
+            'admin'   => $this->adminDashboard(),
+            'parent'  => view('dashboard.parent'),
+            default   => abort(403),
+        };
+    }
+
+    //  TEACHER DASHBOARD
+
+    private function teacherDashboard()
+    {
+        $tsIds = $this->teacherSubjectIds();
+
+        $totalTasks     = Task::whereIn('teacher_subject_id', $tsIds)->count();
+        $pendingGrading = TaskSubmission::whereHas('task', fn($q) =>
+                              $q->whereIn('teacher_subject_id', $tsIds)
+                          )->whereIn('status', ['submitted', 'correcting'])->count();
+        $totalGraded    = TaskSubmission::whereHas('task', fn($q) =>
+                              $q->whereIn('teacher_subject_id', $tsIds)
+                          )->where('status', 'graded')->count();
+        $pointsGiven    = Point::whereIn('teacher_subject_id', $tsIds)
+                              ->whereDate('point_date', today())
+                              ->sum('point');
+
+        $recentActivity = TaskSubmission::with(['student.user', 'task.teacherSubject.subject'])
+            ->whereHas('task', fn($q) => $q->whereIn('teacher_subject_id', $tsIds))
+            ->orderByDesc('updated_at')
+            ->limit(8)
+            ->get()
+            ->map(fn($s) => [
+                'student' => $s->student->user->name                 ?? '--',
+                'task'    => $s->task->title                          ?? '--',
+                'subject' => $s->task->teacherSubject->subject->name  ?? '--',
+                'status'  => $s->status,
+                'grade'   => $s->grade,
+            ]);
+
+        return view('teacher.dashboard', compact(
+            'totalTasks', 'pendingGrading', 'totalGraded', 'pointsGiven', 'recentActivity'
+        ));
+    }
+
+    //  STUDENT DASHBOARD VIEW
+
+    private function studentDashboardView()
+    {
+        $student = $this->student();
+
+        $totalTasks     = Task::whereHas('teacherSubject',
+                              fn($q) => $q->where('class_id', $student->class_id)
+                          )->count();
+        $pendingTasks   = TaskSubmission::where('student_id', $student->id)
+                              ->where('status', 'taken')->count();
+        $submittedTasks = TaskSubmission::where('student_id', $student->id)
+                              ->whereIn('status', ['submitted', 'correcting', 'graded'])->count();
+        $totalPoints    = Point::where('student_id', $student->id)->sum('point');
+
+        $recentTasks = Task::with(['teacherSubject.subject'])
+            ->whereHas('teacherSubject', fn($q) => $q->where('class_id', $student->class_id))
+            ->latest()
+            ->limit(5)
+            ->get()
+            ->map(function ($t) use ($student) {
+                $sub = TaskSubmission::where('task_id', $t->id)
+                                     ->where('student_id', $student->id)->first();
+                return [
+                    'title'   => $t->title,
+                    'subject' => $t->teacherSubject->subject->name ?? '--',
+                    'due'     => $t->due_date
+                                   ? \Carbon\Carbon::parse($t->due_date)->format('d M')
+                                   : '--',
+                    'status'  => $sub ? $sub->status : 'taken',
+                ];
+            });
+
+        return view('student.dashboard', compact(
+            'totalTasks', 'pendingTasks', 'submittedTasks', 'totalPoints', 'recentTasks'
+        ));
+    }
+
+    //  ADMIN DASHBOARD
+
+    private function adminDashboard()
+    {
+        $totalStudents    = User::where('role', 'student')->count();
+        $totalTeachers    = User::where('role', 'teacher')->count();
+        $totalTasks       = Task::count();
+        $totalPoints      = Point::sum('point');
+        $pointsToday      = Point::whereDate('point_date', today())->sum('point');
+        $newStudentsMonth = User::where('role', 'student')
+                                ->whereMonth('created_at', now()->month)
+                                ->whereYear('created_at', now()->year)
+                                ->count();
+        $newTeachersMonth = User::where('role', 'teacher')
+                                ->whereMonth('created_at', now()->month)
+                                ->whereYear('created_at', now()->year)
+                                ->count();
+
+        $recentActivity = Point::with(['student.user', 'teacherSubject.subject'])
+            ->orderByDesc('point_date')
+            ->limit(10)
+            ->get()
+            ->map(fn($p) => [
+                'student' => $p->student->user->name              ?? '--',
+                'teacher' => $p->teacherSubject->teacher->user->name ?? '--',
+                'points'  => $p->point,
+                'type'    => $p->type ?? ($p->point >= 0 ? 'positive' : 'negative'),
+                'subject' => $p->teacherSubject->subject->name     ?? '--',
+            ]);
+
+        return view('admin.dashboard', compact(
+            'totalStudents', 'totalTeachers', 'totalTasks', 'totalPoints',
+            'pointsToday', 'newStudentsMonth', 'newTeachersMonth', 'recentActivity'
+        ));
+    }
+
+    //  SHARED   GET /task/{task}/detail
+
+    public function detail($id)
+    {
+        $task = Task::with([
+            'teacherSubject.subject',
+            'teacherSubject.class',
+            'teacherSubject.teacher.user',
+            'images',
+            'attachments',
+        ])->findOrFail($id);
+
+        $submission = null;
+        if (Auth::user()->role === 'student') {
+            $student    = $this->student();
+            $submission = TaskSubmission::where('task_id', $id)
+                              ->where('student_id', $student->id)
+                              ->first();
+        }
+
+        return response()->json([
+            'id'          => $task->id,
+            'title'       => $task->title,
+            'description' => $task->description,
+            'subject'     => $task->teacherSubject->subject->name           ?? '--',
+            'class'       => $task->teacherSubject->class->name             ?? '--',
+            'teacher'     => $task->teacherSubject->teacher->user->name     ?? '--',
+            'due_date'    => $task->due_date,
+            'max_grade'   => $task->max_grade,
+            'images'      => $task->images->map(fn($i) => [
+                'url'  => Storage::url($i->path),
+                'name' => $i->original_name ?? basename($i->path),
+            ]),
+            'attachments' => $task->attachments->map(fn($a) => [
+                'url'  => Storage::url($a->path),
+                'name' => $a->original_name ?? basename($a->path),
+            ]),
+            'submission'  => $submission ? [
+                'status'   => $submission->status,
+                'grade'    => $submission->grade,
+                'feedback' => $submission->feedback,
+            ] : null,
+        ]);
+    }
+
+    //  TEACHER – Tasks
+
+    /** GET /teacher/tasks */
+    public function index()
+    {
+        $tsIds = $this->teacherSubjectIds();
+
+        $tasks = Task::with(['teacherSubject.subject', 'teacherSubject.class', 'images'])
+            ->whereIn('teacher_subject_id', $tsIds)
+            ->withCount('submissions')
+            ->withCount(['submissions as pending_count' => fn($q) =>
+                $q->whereIn('status', ['submitted', 'correcting'])
+            ])
+            ->withCount(['images as images_count'])
+            ->latest()
+            ->get();
 
         return response()->json($tasks);
     }
 
-    /**
-     * POST /teacher/tasks
-     * Create a new task
-     */
+    /** GET /teacher/tasks/create */
+    public function create()
+    {
+        $tsIds = $this->teacherSubjectIds();
+
+        $teacherSubjects = TeacherSubject::with(['subject', 'class'])
+            ->whereIn('id', $tsIds)
+            ->get()
+            ->map(fn($ts) => [
+                'id'      => $ts->id,
+                'subject' => $ts->subject->name ?? '--',
+                'class'   => $ts->class->name   ?? '--',
+            ]);
+
+        return response()->json(compact('teacherSubjects'));
+    }
+
+    /** POST /teacher/tasks */
     public function store(Request $request)
     {
-        $teacher = Auth::user()->teacher;
-
         $validated = $request->validate([
             'teacher_subject_id' => 'required|exists:teacher_subjects,id',
-            'point_category_id'  => 'nullable|exists:point_categories,id',
             'title'              => 'required|string|max:150',
             'description'        => 'nullable|string',
-            'due_date'           => 'nullable|date|after:today',
-            'max_grade'          => 'integer|min:1|max:100',
+            'due_date'           => 'nullable|date',
+            'max_grade'          => 'nullable|integer|min:1|max:10000',
+            'files.*'            => 'nullable|file|max:10240',
         ]);
 
-        // Make sure the teacher_subject belongs to this teacher
-        $owns = TeacherSubject::where('id', $validated['teacher_subject_id'])
-                              ->where('teacher_id', $teacher->id)
-                              ->exists();
+        $this->authorizeTeacherSubject($validated['teacher_subject_id']);
 
-        if (!$owns) {
-            return response()->json(['message' => 'Unauthorized.'], 403);
-        }
+        $task = Task::create([
+            'teacher_subject_id' => $validated['teacher_subject_id'],
+            'title'              => $validated['title'],
+            'description'        => $validated['description'] ?? null,
+            'due_date'           => $validated['due_date']     ?? null,
+            'max_grade'          => $validated['max_grade']    ?? 100,
+        ]);
 
-        $task = Task::create($validated);
+        $this->handleTaskFiles($task, $request);
 
-        return response()->json($task->load(['teacherSubject.subject', 'category']), 201);
+        return response()->json($task->load(['teacherSubject.subject', 'teacherSubject.class']), 201);
     }
 
-    /**
-     * PUT /teacher/tasks/{task}
-     * Update a task
-     */
+    /** POST /teacher/tasks/{task}  (_method=PUT via FormData) */
     public function update(Request $request, Task $task)
     {
-        $teacher = Auth::user()->teacher;
-
-        // Make sure this teacher owns the task
-        if ($task->teacherSubject->teacher_id !== $teacher->id) {
-            return response()->json(['message' => 'Unauthorized.'], 403);
-        }
+        $this->authorizeTask($task);
 
         $validated = $request->validate([
-            'title'             => 'sometimes|string|max:150',
-            'description'       => 'nullable|string',
-            'due_date'          => 'nullable|date',
-            'max_grade'         => 'sometimes|integer|min:1|max:100',
-            'point_category_id' => 'nullable|exists:point_categories,id',
+            'teacher_subject_id' => 'sometimes|exists:teacher_subjects,id',
+            'title'              => 'sometimes|string|max:150',
+            'description'        => 'nullable|string',
+            'due_date'           => 'nullable|date',
+            'max_grade'          => 'sometimes|integer|min:1|max:10000',
+            'files.*'            => 'nullable|file|max:10240',
         ]);
 
-        $task->update($validated);
+        if (isset($validated['teacher_subject_id'])) {
+            $this->authorizeTeacherSubject($validated['teacher_subject_id']);
+        }
 
-        return response()->json($task->load(['teacherSubject.subject', 'category']));
+        $task->update([
+            'teacher_subject_id' => $validated['teacher_subject_id'] ?? $task->teacher_subject_id,
+            'title'              => $validated['title']               ?? $task->title,
+            'description'        => $validated['description']         ?? $task->description,
+            'due_date'           => $validated['due_date']            ?? $task->due_date,
+            'max_grade'          => $validated['max_grade']           ?? $task->max_grade,
+        ]);
+
+        $this->handleTaskFiles($task, $request);
+
+        return response()->json($task->load(['teacherSubject.subject', 'teacherSubject.class']));
     }
 
-    /**
-     * DELETE /teacher/tasks/{task}
-     * Delete a task
-     */
+    /** DELETE /teacher/tasks/{task} */
     public function destroy(Task $task)
     {
-        $teacher = Auth::user()->teacher;
+        $this->authorizeTask($task);
 
-        if ($task->teacherSubject->teacher_id !== $teacher->id) {
-            return response()->json(['message' => 'Unauthorized.'], 403);
-        }
+        foreach ($task->images      as $img) Storage::delete($img->path);
+        foreach ($task->attachments as $att) Storage::delete($att->path);
 
         $task->delete();
 
         return response()->json(['message' => 'Task deleted.']);
     }
 
-    /**
-     * GET /teacher/tasks/{task}/submissions
-     * View all student submissions for a task
-     */
-    public function submissions(Task $task)
-    {
-        $teacher = Auth::user()->teacher;
+    //  TEACHER – Submissions
 
-        if ($task->teacherSubject->teacher_id !== $teacher->id) {
-            return response()->json(['message' => 'Unauthorized.'], 403);
+    /** GET /teacher/submissions */
+    public function submissionIndex(Request $request, Task $task = null)
+    {
+        $tsIds = $this->teacherSubjectIds();
+
+        $query = TaskSubmission::with([
+            'student.user',
+            'task.teacherSubject.subject',
+            'task.teacherSubject.class',
+        ])->whereHas('task', fn($q) => $q->whereIn('teacher_subject_id', $tsIds));
+
+        if ($task) {
+            $this->authorizeTask($task);
+            $query->where('task_id', $task->id);
         }
 
-        $submissions = $task->submissions()
-                            ->with(['student.user'])
-                            ->get()
-                            ->map(function ($s) {
-                                return [
-                                    'id'           => $s->id,
-                                    'student_name' => $s->student->user->name,
-                                    'status'       => $s->status,
-                                    'grade'        => $s->grade,
-                                    'feedback'     => $s->feedback,
-                                    'photo_path'   => $s->photo_path,
-                                    'submitted_at' => $s->submitted_at,
-                                ];
-                            });
+        if ($request->filled('task_id')) $query->where('task_id', $request->task_id);
+        if ($request->filled('status'))  $query->where('status',  $request->status);
+
+        $submissions = $query->orderByDesc('updated_at')->get()->map(fn($s) => [
+            'id'           => $s->id,
+            'student_name' => $s->student->user->name                 ?? '--',
+            'class'        => $s->task->teacherSubject->class->name    ?? '--',
+            'task_title'   => $s->task->title                          ?? '--',
+            'subject'      => $s->task->teacherSubject->subject->name  ?? '--',
+            'status'       => $s->status,
+            'grade'        => $s->grade,
+            'max_grade'    => $s->task->max_grade                      ?? 100,
+            'feedback'     => $s->feedback,
+            'submitted_at' => $s->submitted_at,
+        ]);
 
         return response()->json($submissions);
     }
 
-    /**
-     * PUT /teacher/submissions/{submission}/correcting
-     * Teacher marks a submission as being corrected
-     * Status: submitted → correcting
-     */
+    /** POST /teacher/submissions/{submission}/correcting */
     public function markCorrecting(TaskSubmission $submission)
     {
-        $teacher = Auth::user()->teacher;
-
-        // Verify teacher owns this task
-        if ($submission->task->teacherSubject->teacher_id !== $teacher->id) {
-            return response()->json(['message' => 'Unauthorized.'], 403);
-        }
+        $this->authorizeSubmissionAsTeacher($submission);
 
         if ($submission->status !== 'submitted') {
-            return response()->json([
-                'message' => 'Submission must be in submitted status first.'
-            ], 422);
+            return response()->json(['message' => 'Submission must be submitted first.'], 422);
         }
 
         $submission->update(['status' => 'correcting']);
 
-        return response()->json(['message' => 'Marked as correcting.', 'submission' => $submission]);
+        return response()->json(['message' => 'Marked as correcting.']);
     }
 
-    /**
-     * PUT /teacher/submissions/{submission}/grade
-     * Teacher gives a grade + auto-awards points
-     * Status: correcting → graded
-     */
+    /** POST /teacher/submissions/{submission}/status */
+    public function submissionSetStatus(Request $request, TaskSubmission $submission)
+    {
+        $this->authorizeSubmissionAsTeacher($submission);
+
+        $request->validate([
+            'status' => 'required|in:taken,submitted,correcting,graded',
+        ]);
+
+        $submission->update(['status' => $request->status]);
+
+        return response()->json(['message' => 'Status updated.']);
+    }
+
+    /** POST /teacher/submissions/{submission}/grade */
     public function grade(Request $request, TaskSubmission $submission)
     {
-        $teacher = Auth::user()->teacher;
+        $this->authorizeSubmissionAsTeacher($submission);
 
-        if ($submission->task->teacherSubject->teacher_id !== $teacher->id) {
-            return response()->json(['message' => 'Unauthorized.'], 403);
+        if (!in_array($submission->status, ['submitted', 'correcting'])) {
+            return response()->json(['message' => 'Submission must be submitted or correcting first.'], 422);
         }
 
-        if ($submission->status !== 'correcting') {
-            return response()->json([
-                'message' => 'Submission must be in correcting status first.'
-            ], 422);
-        }
-
-        $validated = $request->validate([
-            'grade'    => 'required|integer|min:0|max:' . $submission->task->max_grade,
+        $request->validate([
+            'grade'    => 'required|numeric|min:0|max:' . $submission->task->max_grade,
             'feedback' => 'nullable|string',
+            'status'   => 'nullable|in:correcting,graded',
         ]);
 
-        // Update submission to graded
+        $status = $request->status ?? 'graded';
+
         $submission->update([
-            'grade'    => $validated['grade'],
-            'feedback' => $validated['feedback'] ?? null,
-            'status'   => 'graded',
+            'grade'     => $request->grade,
+            'feedback'  => $request->feedback,
+            'status'    => $status,
+            'graded_at' => $status === 'graded' ? now() : $submission->graded_at,
         ]);
 
-        // Auto-award points based on grade percentage
-        $pointsAwarded = 0;
-
-        if ($submission->task->point_category_id) {
-            $percentage   = $validated['grade'] / $submission->task->max_grade;
-            $maxPoints    = $submission->task->category->default_points;
-            $pointsAwarded = (int) round($percentage * $maxPoints);
-
-            Point::create([
-                'student_id'         => $submission->student_id,
-                'teacher_subject_id' => $submission->task->teacher_subject_id,
-                'category_id'        => $submission->task->point_category_id,
-                'point'              => $pointsAwarded,
-                'description'        => "Grade {$validated['grade']}/{$submission->task->max_grade} — {$submission->task->title}",
-                'point_date'         => now()->toDateString(),
-            ]);
+        if ($status === 'graded') {
+            Point::updateOrCreate(
+                [
+                    'student_id'         => $submission->student_id,
+                    'task_submission_id' => $submission->id,
+                ],
+                [
+                    'teacher_subject_id' => $submission->task->teacher_subject_id,
+                    'point'              => (int) $request->grade,
+                    'description'        => 'Grade ' . $request->grade . '/' . $submission->task->max_grade . ' — ' . $submission->task->title,
+                    'point_date'         => today()->toDateString(),
+                    'type'               => 'positive',
+                ]
+            );
         }
 
         return response()->json([
-            'message'        => 'Graded successfully.',
-            'grade'          => $validated['grade'],
-            'points_awarded' => $pointsAwarded,
+            'message' => 'Graded successfully.',
+            'grade'   => $request->grade,
+            'status'  => $status,
         ]);
     }
 
-    // =========================================================
-    // STUDENT METHODS
-    // =========================================================
+    //  TEACHER – Subjects
 
-    /**
-     * GET /student/tasks
-     * List all available tasks the student hasn't taken yet
-     */
-    public function available()
+    /** GET /teacher/subjects */
+    public function subjectIndex()
     {
-        $student = Auth::user()->student;
+        $teacher = $this->teacher();
 
-        // Get IDs of tasks already taken
-        $takenTaskIds = TaskSubmission::where('student_id', $student->id)
-                                      ->pluck('task_id');
+        $subjects = TeacherSubject::with(['subject', 'class'])
+            ->where('teacher_id', $teacher->id)
+            ->withCount('tasks')
+            ->get()
+            ->map(fn($ts) => [
+                'id'             => $ts->id,
+                'subject_name'   => $ts->subject->name ?? '--',
+                'class_name'     => $ts->class->name   ?? '--',
+                'tasks_count'    => $ts->tasks_count,
+                'students_count' => Student::where('class_id', $ts->class_id)->count(),
+            ]);
 
-        $tasks = Task::whereNotIn('id', $takenTaskIds)
-                     ->with(['teacherSubject.subject', 'teacherSubject.teacher.user', 'category'])
-                     ->when(now(), function ($q) {
-                         // Show tasks not yet past due date, or with no due date
-                         $q->where(function ($q2) {
-                             $q2->whereNull('due_date')
-                                ->orWhere('due_date', '>=', now()->toDateString());
-                         });
-                     })
-                     ->latest()
-                     ->get()
-                     ->map(function ($t) {
-                         return [
-                             'id'          => $t->id,
-                             'title'       => $t->title,
-                             'description' => $t->description,
-                             'due_date'    => $t->due_date,
-                             'max_grade'   => $t->max_grade,
-                             'subject'     => $t->teacherSubject->subject->name ?? '-',
-                             'teacher'     => $t->teacherSubject->teacher->user->name ?? '-',
-                             'category'    => $t->category->name ?? '-',
-                         ];
-                     });
+        return response()->json($subjects);
+    }
+
+    /** GET /teacher/subjects/create */
+    public function subjectCreate()
+    {
+        $subjects = Subject::orderBy('name')->get(['id', 'name']);
+        $classes  = Classes::orderBy('name')->get(['id', 'name']);
+
+        return response()->json(compact('subjects', 'classes'));
+    }
+
+    /** POST /teacher/subjects */
+    public function subjectStore(Request $request)
+    {
+        $request->validate([
+            'subject_id' => 'required|integer|exists:subjects,id',
+            'class_id'   => 'required|integer|exists:classes,id',
+        ]);
+
+        $teacher = $this->teacher();
+
+        $exists = TeacherSubject::where('teacher_id',  $teacher->id)
+                                 ->where('subject_id', $request->subject_id)
+                                 ->where('class_id',   $request->class_id)
+                                 ->exists();
+
+        if ($exists) {
+            return response()->json(['message' => 'This subject-class combination is already assigned.'], 422);
+        }
+
+        $ts = TeacherSubject::create([
+            'teacher_id'  => $teacher->id,
+            'subject_id'  => $request->subject_id,
+            'class_id'    => $request->class_id,
+        ]);
+
+        return response()->json($ts->load(['subject', 'class']), 201);
+    }
+
+    /** DELETE /teacher/subjects/{id} */
+    public function subjectDestroy($id)
+    {
+        $teacher = $this->teacher();
+
+        $ts = TeacherSubject::where('id', $id)
+                             ->where('teacher_id', $teacher->id)
+                             ->firstOrFail();
+        $ts->delete();
+
+        return response()->json(['message' => 'Subject removed.']);
+    }
+
+    //  TEACHER – Points & Report
+
+    /** GET /teacher/points */
+    public function teacherPoints()
+    {
+        $tsIds = $this->teacherSubjectIds();
+
+        $points = Point::with(['student.user', 'teacherSubject.subject'])
+            ->whereIn('teacher_subject_id', $tsIds)
+            ->orderByDesc('point_date')
+            ->get()
+            ->map(fn($p) => [
+                'student'     => $p->student->user->name              ?? '--',
+                'subject'     => $p->teacherSubject->subject->name     ?? '--',
+                'description' => $p->description,
+                'points'      => $p->point,
+                'type'        => $p->type ?? ($p->point >= 0 ? 'positive' : 'negative'),
+                'date'        => $p->point_date,
+            ]);
+
+        return response()->json($points);
+    }
+
+    /** GET /teacher/points/stats */
+    public function teacherPointStats()
+    {
+        $tsIds    = $this->teacherSubjectIds();
+        $total    = Point::whereIn('teacher_subject_id', $tsIds)->sum('point');
+        $awarded  = Point::whereIn('teacher_subject_id', $tsIds)->where('point', '>', 0)->sum('point');
+        $deducted = Point::whereIn('teacher_subject_id', $tsIds)->where('point', '<', 0)->sum('point');
+
+        return response()->json(compact('total', 'awarded', 'deducted'));
+    }
+
+    /** GET /teacher/report?period=week|month|all&ts_id= */
+    public function report(Request $request)
+    {
+        $teacher = $this->teacher();
+
+        $from = match ($request->period ?? 'month') {
+            'week'  => now()->startOfWeek(),
+            'month' => now()->startOfMonth(),
+            default => null,
+        };
+
+        $tsQuery = TeacherSubject::with(['subject', 'class'])->where('teacher_id', $teacher->id);
+        if ($request->filled('ts_id')) $tsQuery->where('id', $request->ts_id);
+        $teacherSubjects = $tsQuery->get();
+        $filteredTsIds   = $teacherSubjects->pluck('id');
+
+        $taskQuery = Task::whereIn('teacher_subject_id', $filteredTsIds);
+        if ($from)  $taskQuery->where('created_at', '>=', $from);
+        $taskIds   = $taskQuery->pluck('id');
+
+        $subQ    = TaskSubmission::whereIn('task_id', $taskIds);
+        $summary = [
+            'tasks'       => $taskIds->count(),
+            'submissions' => (clone $subQ)->count(),
+            'graded'      => (clone $subQ)->where('status', 'graded')->count(),
+            'avg_grade'   => (clone $subQ)->where('status', 'graded')->avg('grade'),
+        ];
+
+        $breakdown = $teacherSubjects->map(function ($ts) use ($from) {
+            $ids = Task::where('teacher_subject_id', $ts->id)
+                ->when($from, fn($q) => $q->where('created_at', '>=', $from))
+                ->pluck('id');
+            $sq = TaskSubmission::whereIn('task_id', $ids);
+            return [
+                'class_name'      => $ts->class->name   ?? '--',
+                'subject_name'    => $ts->subject->name ?? '--',
+                'total_students'  => Student::where('class_id', $ts->class_id)->count(),
+                'submitted_count' => (clone $sq)->whereIn('status', ['submitted', 'correcting', 'graded'])->count(),
+                'graded_count'    => (clone $sq)->where('status', 'graded')->count(),
+                'avg_grade'       => (clone $sq)->where('status', 'graded')->avg('grade'),
+            ];
+        });
+
+        $points = Point::with(['student.user', 'teacherSubject.subject'])
+            ->whereIn('teacher_subject_id', $filteredTsIds)
+            ->orderByDesc('point_date')
+            ->get()
+            ->map(fn($p) => [
+                'student'     => $p->student->user->name              ?? '--',
+                'subject'     => $p->teacherSubject->subject->name     ?? '--',
+                'description' => $p->description,
+                'points'      => $p->point,
+                'type'        => $p->type ?? ($p->point >= 0 ? 'positive' : 'negative'),
+                'date'        => $p->point_date,
+            ]);
+
+        return response()->json(compact('summary', 'breakdown', 'points'));
+    }
+
+    //  STUDENT – Dashboard JSON   GET /student/dashboard
+
+    public function studentDashboard()
+    {
+        $student = $this->student();
+
+        $pending   = TaskSubmission::where('student_id', $student->id)->where('status', 'taken')->count();
+        $submitted = TaskSubmission::where('student_id', $student->id)->where('status', 'submitted')->count();
+        $graded    = TaskSubmission::where('student_id', $student->id)->where('status', 'graded')->count();
+        $totalPts  = Point::where('student_id', $student->id)->sum('point');
+
+        $upcoming = Task::with(['teacherSubject.subject'])
+            ->whereHas('teacherSubject', fn($q) => $q->where('class_id', $student->class_id))
+            ->where(fn($q) => $q->whereNull('due_date')->orWhere('due_date', '>=', today()))
+            ->orderBy('due_date')
+            ->limit(6)
+            ->get()
+            ->map(function ($t) use ($student) {
+                $sub = TaskSubmission::where('task_id', $t->id)
+                                     ->where('student_id', $student->id)->first();
+                return [
+                    'id'        => $t->id,
+                    'title'     => $t->title,
+                    'subject'   => $t->teacherSubject->subject->name ?? '--',
+                    'due_date'  => $t->due_date,
+                    'my_status' => $sub ? $sub->status : 'available',
+                ];
+            });
+
+        $recentPoints = Point::with('teacherSubject.subject')
+            ->where('student_id', $student->id)
+            ->orderByDesc('point_date')
+            ->limit(5)
+            ->get()
+            ->map(fn($p) => [
+                'subject'     => $p->teacherSubject->subject->name ?? '--',
+                'description' => $p->description,
+                'points'      => $p->point,
+                'date'        => $p->point_date,
+            ]);
+
+        return response()->json([
+            'pending'       => $pending,
+            'submitted'     => $submitted,
+            'graded'        => $graded,
+            'total_points'  => $totalPts,
+            'upcoming'      => $upcoming,
+            'recent_points' => $recentPoints,
+        ]);
+    }
+
+    //  STUDENT – Tasks
+
+    /** GET /student/tasks */
+    public function studentTasks(Request $request)
+    {
+        $student = $this->student();
+
+        $tasks = Task::with(['teacherSubject.subject', 'teacherSubject.teacher.user'])
+            ->whereHas('teacherSubject', fn($q) => $q->where('class_id', $student->class_id))
+            ->latest()
+            ->get()
+            ->map(function ($t) use ($student) {
+                $sub = TaskSubmission::where('task_id', $t->id)
+                                     ->where('student_id', $student->id)->first();
+                return [
+                    'id'          => $t->id,
+                    'title'       => $t->title,
+                    'description' => $t->description,
+                    'subject'     => $t->teacherSubject->subject->name       ?? '--',
+                    'teacher'     => $t->teacherSubject->teacher->user->name ?? '--',
+                    'due_date'    => $t->due_date,
+                    'max_grade'   => $t->max_grade,
+                    'my_status'   => $sub ? $sub->status : 'available',
+                    'my_grade'    => $sub ? $sub->grade  : null,
+                ];
+            });
+
+        if ($request->filled('status')) {
+            $filter = $request->status;
+            $tasks  = $tasks->filter(fn($t) =>
+                $filter === 'available'
+                    ? $t['my_status'] === 'available'
+                    : $t['my_status'] === $filter
+            )->values();
+        }
 
         return response()->json($tasks);
     }
 
-    /**
-     * POST /student/tasks/{task}/take
-     * Student accepts/takes a task
-     * Creates submission with status: taken
-     */
-    public function take(Task $task)
+    /** GET /student/my-submissions */
+    public function mySubmissions()
     {
-        $student = Auth::user()->student;
+        $student = $this->student();
 
-        // Check if already taken
-        $alreadyTaken = TaskSubmission::where('task_id', $task->id)
-                                      ->where('student_id', $student->id)
-                                      ->exists();
+        $submissions = TaskSubmission::where('student_id', $student->id)
+            ->with(['task.teacherSubject.subject'])
+            ->latest()
+            ->get()
+            ->map(fn($s) => [
+                'id'           => $s->id,
+                'task_title'   => $s->task->title,
+                'subject'      => $s->task->teacherSubject->subject->name ?? '--',
+                'status'       => $s->status,
+                'grade'        => $s->grade,
+                'max_grade'    => $s->task->max_grade,
+                'feedback'     => $s->feedback,
+                'submitted_at' => $s->submitted_at,
+                'due_date'     => $s->task->due_date,
+            ]);
 
-        if ($alreadyTaken) {
-            return response()->json(['message' => 'You already took this task.'], 422);
-        }
+        return response()->json($submissions);
+    }
 
-        // Check due date
+    /** POST /student/tasks/{task}/accept */
+    public function studentAccept(Task $task)
+    {
+        $student = $this->student();
+
         if ($task->due_date && $task->due_date < now()->toDateString()) {
             return response()->json(['message' => 'This task is past its due date.'], 422);
+        }
+
+        $belongs = TeacherSubject::where('id', $task->teacher_subject_id)
+                                  ->where('class_id', $student->class_id)
+                                  ->exists();
+        if (!$belongs) {
+            return response()->json(['message' => 'This task is not for your class.'], 403);
+        }
+
+        $already = TaskSubmission::where('task_id', $task->id)
+                                  ->where('student_id', $student->id)
+                                  ->exists();
+        if ($already) {
+            return response()->json(['message' => 'You have already accepted this task.'], 422);
         }
 
         $submission = TaskSubmission::create([
@@ -293,68 +793,515 @@ class TaskController extends Controller
             'status'     => 'taken',
         ]);
 
-        return response()->json([
-            'message'    => 'Task taken successfully.',
-            'submission' => $submission,
-        ], 201);
+        return response()->json(['message' => 'Task accepted.', 'submission' => $submission], 201);
     }
 
-    /**
-     * PUT /student/submissions/{submission}/submit
-     * Student marks their work as submitted
-     * Status: taken → submitted
-     */
-    public function submit(Request $request, TaskSubmission $submission)
+    /** POST /student/tasks/{task}/submit */
+    public function studentSubmit(Request $request, Task $task)
     {
-        $student = Auth::user()->student;
-
-        if ($submission->student_id !== $student->id) {
-            return response()->json(['message' => 'Unauthorized.'], 403);
-        }
-
-        if ($submission->status !== 'taken') {
-            return response()->json(['message' => 'Task already submitted.'], 422);
-        }
-
-        $validated = $request->validate([
-            'photo_path' => 'nullable|string', // or 'file|image' if uploading
+        $request->validate([
+            'note'    => 'nullable|string|max:1000',
+            'files.*' => 'nullable|file|max:10240',
         ]);
 
+        $student    = $this->student();
+        $submission = TaskSubmission::where('task_id', $task->id)
+                                     ->where('student_id', $student->id)
+                                     ->where('status', 'taken')
+                                     ->firstOrFail();
+
+        if ($request->hasFile('files')) {
+            foreach ($request->file('files') as $file) {
+                $path = $file->store('submissions/' . $submission->id, 'public');
+                $submission->files()->create([
+                    'path'          => $path,
+                    'original_name' => $file->getClientOriginalName(),
+                    'mime_type'     => $file->getMimeType(),
+                ]);
+            }
+        }
+
         $submission->update([
+            'note'         => $request->note,
             'status'       => 'submitted',
-            'photo_path'   => $validated['photo_path'] ?? null,
             'submitted_at' => now(),
         ]);
 
-        return response()->json(['message' => 'Submitted successfully.', 'submission' => $submission]);
+        return response()->json(['message' => 'Submitted successfully.']);
     }
 
-    /**
-     * GET /student/my-submissions
-     * Student views their own submissions and grades
-     */
-    public function mySubmissions()
-    {
-        $student = Auth::user()->student;
+    //  STUDENT – Points
 
-        $submissions = TaskSubmission::where('student_id', $student->id)
-                                     ->with(['task.teacherSubject.subject'])
-                                     ->latest()
-                                     ->get()
-                                     ->map(function ($s) {
-                                         return [
-                                             'id'           => $s->id,
-                                             'task_title'   => $s->task->title,
-                                             'subject'      => $s->task->teacherSubject->subject->name ?? '-',
-                                             'status'       => $s->status,
-                                             'grade'        => $s->grade,
-                                             'max_grade'    => $s->task->max_grade,
-                                             'feedback'     => $s->feedback,
-                                             'submitted_at' => $s->submitted_at,
-                                             'due_date'     => $s->task->due_date,
-                                         ];
-                                     });
+    /** GET /student/points */
+    public function studentPoints()
+    {
+        $student = $this->student();
+
+        $points = Point::with('teacherSubject.subject')
+            ->where('student_id', $student->id)
+            ->orderByDesc('point_date')
+            ->get()
+            ->map(fn($p) => [
+                'subject'     => $p->teacherSubject->subject->name ?? '--',
+                'description' => $p->description,
+                'points'      => $p->point,
+                'type'        => $p->type ?? ($p->point >= 0 ? 'positive' : 'negative'),
+                'date'        => $p->point_date,
+            ]);
+
+        return response()->json($points);
+    }
+
+    /** GET /student/points/stats */
+    public function studentPointStats()
+    {
+        $student  = $this->student();
+        $net      = Point::where('student_id', $student->id)->sum('point');
+        $earned   = Point::where('student_id', $student->id)->where('point', '>', 0)->sum('point');
+        $deducted = Point::where('student_id', $student->id)->where('point', '<', 0)->sum('point');
+
+        return response()->json(compact('net', 'earned', 'deducted'));
+    }
+
+    /** GET /student/report */
+    public function studentReport(Request $request)
+    {
+        $student = $this->student();
+
+        $from = $request->period === 'all' ? null : now()->startOfMonth();
+
+        $tsIds = TeacherSubject::where('class_id', $student->class_id)->pluck('id');
+
+        $taskIds = Task::whereIn('teacher_subject_id', $tsIds)
+            ->when($from, fn($q) => $q->where('created_at', '>=', $from))
+            ->pluck('id');
+
+        $subQ      = TaskSubmission::where('student_id', $student->id)->whereIn('task_id', $taskIds);
+        $summary   = [
+            'tasks'     => $taskIds->count(),
+            'submitted' => (clone $subQ)->whereIn('status', ['submitted', 'correcting', 'graded'])->count(),
+            'points'    => Point::where('student_id', $student->id)->sum('point'),
+            'avg_grade' => (clone $subQ)->where('status', 'graded')->avg('grade'),
+        ];
+
+        $breakdown = TeacherSubject::with(['subject', 'teacher.user'])
+            ->whereIn('id', $tsIds)
+            ->get()
+            ->map(function ($ts) use ($student, $from) {
+                $ids  = Task::where('teacher_subject_id', $ts->id)
+                    ->when($from, fn($q) => $q->where('created_at', '>=', $from))
+                    ->pluck('id');
+                $sq   = TaskSubmission::where('student_id', $student->id)->whereIn('task_id', $ids);
+                return [
+                    'subject_name' => $ts->subject->name       ?? '--',
+                    'teacher_name' => $ts->teacher->user->name ?? '--',
+                    'total_tasks'  => $ids->count(),
+                    'submitted'    => (clone $sq)->whereIn('status', ['submitted', 'correcting', 'graded'])->count(),
+                    'avg_grade'    => (clone $sq)->where('status', 'graded')->avg('grade'),
+                ];
+            });
+
+        $graded = TaskSubmission::where('student_id', $student->id)
+            ->where('status', 'graded')
+            ->with(['task.teacherSubject.subject'])
+            ->latest('graded_at')
+            ->get()
+            ->map(fn($s) => [
+                'task_title' => $s->task->title,
+                'subject'    => $s->task->teacherSubject->subject->name ?? '--',
+                'grade'      => $s->grade,
+                'max_grade'  => $s->task->max_grade,
+                'feedback'   => $s->feedback,
+                'graded_at'  => $s->graded_at,
+            ]);
+
+        return response()->json(compact('summary', 'breakdown', 'graded'));
+    }
+
+    //  ADMIN – Users   (GET/POST /users, PUT/DELETE /users/{id})
+
+    /** GET /users?search=&role= */
+    public function usersIndex(Request $request)
+    {
+        $query = User::query();
+
+        if ($request->filled('search')) {
+            $s = $request->search;
+            $query->where(fn($q) => $q->where('name', 'like', "%$s%")
+                                      ->orWhere('email', 'like', "%$s%"));
+        }
+        if ($request->filled('role')) {
+            $query->where('role', $request->role);
+        }
+
+        return response()->json($query->latest()->get());
+    }
+
+    /** POST /users */
+    public function usersStore(Request $request)
+    {
+        $request->validate([
+            'name'     => 'required|string|max:100',
+            'username' => 'nullable|string|max:50|unique:users,username',
+            'email'    => 'required|email|unique:users,email',
+            'role'     => 'required|in:admin,teacher,student,parent',
+            'password' => 'required|string|min:6',
+        ]);
+
+        $user = User::create([
+            'name'     => $request->name,
+            'username' => $request->username,
+            'email'    => $request->email,
+            'role'     => $request->role,
+            'password' => Hash::make($request->password),
+        ]);
+
+        // Create role profile
+        match ($request->role) {
+            'teacher' => Teacher::create(['user_id' => $user->id]),
+            'student' => \App\Models\Student::create(['user_id' => $user->id]),
+            default   => null,
+        };
+
+        return response()->json($user, 201);
+    }
+
+    /** PUT /users/{user} */
+    public function usersUpdate(Request $request, User $user)
+    {
+        $request->validate([
+            'name'     => 'sometimes|string|max:100',
+            'username' => 'nullable|string|max:50|unique:users,username,' . $user->id,
+            'email'    => 'sometimes|email|unique:users,email,' . $user->id,
+            'role'     => 'sometimes|in:admin,teacher,student,parent',
+        ]);
+
+        $user->update($request->only('name', 'username', 'email', 'role'));
+
+        return response()->json($user);
+    }
+
+    /** DELETE /users/{user} */
+    public function usersDestroy(User $user)
+    {
+        $user->delete();
+        return response()->json(['message' => 'User deleted.']);
+    }
+
+    //  ADMIN – Subjects   (GET/POST /subjects, PUT/DELETE /subjects/{id})
+
+    /** GET /subjects */
+    public function adminSubjectsIndex()
+    {
+        return response()->json(Subject::orderBy('name')->get());
+    }
+
+    /** POST /subjects */
+    public function adminSubjectsStore(Request $request)
+    {
+        $request->validate(['name' => 'required|string|max:100|unique:subjects,name']);
+        $subject = Subject::create(['name' => $request->name]);
+        return response()->json($subject, 201);
+    }
+
+    /** PUT /subjects/{subject} */
+    public function adminSubjectsUpdate(Request $request, Subject $subject)
+    {
+        $request->validate(['name' => 'required|string|max:100|unique:subjects,name,' . $subject->id]);
+        $subject->update(['name' => $request->name]);
+        return response()->json($subject);
+    }
+
+    /** DELETE /subjects/{subject} */
+    public function adminSubjectsDestroy(Subject $subject)
+    {
+        $subject->delete();
+        return response()->json(['message' => 'Subject deleted.']);
+    }
+
+    //  ADMIN – Classes   (GET/POST /admin/classes, PUT/DELETE /admin/classes/{id})
+
+    /** GET /admin/classes */
+    public function classesIndex()
+    {
+        $classes = Classes::withCount('students')->orderBy('name')->get();
+        return response()->json($classes);
+    }
+
+    /** POST /admin/classes */
+    public function classesStore(Request $request)
+    {
+        $request->validate([
+            'name'        => 'required|string|max:50|unique:classes,name',
+            'description' => 'nullable|string|max:255',
+        ]);
+
+        $class = Classes::create([
+            'name'        => $request->name,
+            'description' => $request->description,
+        ]);
+
+        return response()->json($class, 201);
+    }
+
+    /** PUT /admin/classes/{class} */
+    public function classesUpdate(Request $request, Classes $class)
+    {
+        $request->validate([
+            'name'        => 'required|string|max:50|unique:classes,name,' . $class->id,
+            'description' => 'nullable|string|max:255',
+        ]);
+
+        $class->update([
+            'name'        => $request->name,
+            'description' => $request->description ?? $class->description,
+        ]);
+
+        return response()->json($class);
+    }
+
+    /** DELETE /admin/classes/{class} */
+    public function classesDestroy(Classes $class)
+    {
+        // Prevent deletion if students are enrolled
+        if ($class->students()->count() > 0) {
+            return response()->json(['message' => 'Cannot delete class with enrolled students.'], 422);
+        }
+
+        $class->delete();
+        return response()->json(['message' => 'Class deleted.']);
+    }
+
+    //  ADMIN – Teacher-Subject Assignments
+
+    /** GET /admin/teacher-subjects */
+    public function adminTeacherSubjectsIndex()
+    {
+        $rows = TeacherSubject::with(['teacher.user', 'subject', 'class'])
+            ->get()
+            ->map(fn($ts) => [
+                'id'         => $ts->id,
+                'teacher_id' => $ts->teacher_id,
+                'subject_id' => $ts->subject_id,
+                'class_id'   => $ts->class_id,
+                'teacher'    => $ts->teacher->user->name ?? '--',
+                'subject'    => $ts->subject->name       ?? '--',
+                'class'      => $ts->class->name         ?? '--',
+            ]);
+
+        return response()->json($rows);
+    }
+
+    /** GET /admin/teacher-subjects/form-data */
+    public function adminTeacherSubjectsFormData()
+    {
+        $teachers = User::where('role', 'teacher')
+            ->get()
+            ->map(fn($u) => ['id' => $u->teacher?->id, 'name' => $u->name])
+            ->filter(fn($t) => $t['id']);
+
+        $subjects = Subject::orderBy('name')->get(['id', 'name']);
+        $classes  = Classes::orderBy('name')->get(['id', 'name']);
+
+        return response()->json(compact('teachers', 'subjects', 'classes'));
+    }
+
+    /** POST /admin/teacher-subjects */
+    public function adminTeacherSubjectsStore(Request $request)
+    {
+        $request->validate([
+            'teacher_id' => 'required|integer|exists:teachers,id',
+            'subject_id' => 'required|integer|exists:subjects,id',
+            'class_id'   => 'required|integer|exists:classes,id',
+        ]);
+
+        $exists = TeacherSubject::where('teacher_id', $request->teacher_id)
+                                 ->where('subject_id', $request->subject_id)
+                                 ->where('class_id',   $request->class_id)
+                                 ->exists();
+
+        if ($exists) {
+            return response()->json(['message' => 'This assignment already exists.'], 422);
+        }
+
+        $ts = TeacherSubject::create($request->only('teacher_id', 'subject_id', 'class_id'));
+
+        return response()->json($ts->load(['teacher.user', 'subject', 'class']), 201);
+    }
+
+    /** PUT /admin/teacher-subjects/{ts} */
+    public function adminTeacherSubjectsUpdate(Request $request, TeacherSubject $ts)
+    {
+        $request->validate([
+            'teacher_id' => 'required|integer|exists:teachers,id',
+            'subject_id' => 'required|integer|exists:subjects,id',
+            'class_id'   => 'required|integer|exists:classes,id',
+        ]);
+
+        $ts->update($request->only('teacher_id', 'subject_id', 'class_id'));
+
+        return response()->json($ts->load(['teacher.user', 'subject', 'class']));
+    }
+
+    /** DELETE /admin/teacher-subjects/{ts} */
+    public function adminTeacherSubjectsDestroy(TeacherSubject $ts)
+    {
+        $ts->delete();
+        return response()->json(['message' => 'Assignment removed.']);
+    }
+
+    //  ADMIN – Tasks   (for admin dashboard task panel)
+
+    /** GET /admin/tasks */
+    public function adminTasksIndex()
+    {
+        $tasks = Task::with(['teacherSubject.teacher.user', 'teacherSubject.subject'])
+            ->withCount('submissions')
+            ->latest()
+            ->get();
+
+        return response()->json($tasks);
+    }
+
+    /** POST /admin/tasks */
+    public function adminTasksStore(Request $request)
+    {
+        $request->validate([
+            'title'              => 'required|string|max:150',
+            'description'        => 'nullable|string',
+            'teacher_subject_id' => 'required|exists:teacher_subjects,id',
+            'due_date'           => 'nullable|date',
+            'max_grade'          => 'nullable|integer|min:1',
+        ]);
+
+        $task = Task::create($request->only('title', 'description', 'teacher_subject_id', 'due_date', 'max_grade'));
+
+        return response()->json($task->load(['teacherSubject.subject', 'teacherSubject.class']), 201);
+    }
+
+    /** PUT /admin/tasks/{task} */
+    public function adminTasksUpdate(Request $request, Task $task)
+    {
+        $request->validate([
+            'title'              => 'sometimes|string|max:150',
+            'description'        => 'nullable|string',
+            'teacher_subject_id' => 'sometimes|exists:teacher_subjects,id',
+            'due_date'           => 'nullable|date',
+            'max_grade'          => 'nullable|integer|min:1',
+        ]);
+
+        $task->update($request->only('title', 'description', 'teacher_subject_id', 'due_date', 'max_grade'));
+
+        return response()->json($task->load(['teacherSubject.subject', 'teacherSubject.class']));
+    }
+
+    /** DELETE /admin/tasks/{task} */
+    public function adminTasksDestroy(Task $task)
+    {
+        foreach ($task->images      as $img) Storage::delete($img->path);
+        foreach ($task->attachments as $att) Storage::delete($att->path);
+        $task->delete();
+
+        return response()->json(['message' => 'Task deleted.']);
+    }
+
+    /** GET /admin/tasks/{task}/submissions */
+    public function adminTaskSubmissions(Task $task)
+    {
+        $submissions = TaskSubmission::where('task_id', $task->id)
+            ->with(['student.user', 'student.class'])
+            ->get()
+            ->map(fn($s) => [
+                'id'           => $s->id,
+                'student_id'   => $s->student_id,
+                'student_name' => $s->student->user->name  ?? '--',
+                'class'        => $s->student->class->name ?? '--',
+                'status'       => $s->status,
+                'grade'        => $s->grade,
+                'feedback'     => $s->feedback,
+                'submitted_at' => $s->submitted_at,
+            ]);
 
         return response()->json($submissions);
+    }
+
+    //  ADMIN – Points
+
+    /** POST /admin/points */
+    public function adminPointsStore(Request $request)
+    {
+        $request->validate([
+            'student_id'         => 'required|exists:students,id',
+            'teacher_subject_id' => 'required|exists:teacher_subjects,id',
+            'point'              => 'required|numeric',
+            'description'        => 'nullable|string',
+            'point_date'         => 'nullable|date',
+            'task_submission_id' => 'nullable|exists:task_submissions,id',
+        ]);
+
+        $point = Point::create([
+            'student_id'         => $request->student_id,
+            'teacher_subject_id' => $request->teacher_subject_id,
+            'task_submission_id' => $request->task_submission_id,
+            'point'              => $request->point,
+            'description'        => $request->description,
+            'point_date'         => $request->point_date ?? today()->toDateString(),
+            'type'               => $request->point >= 0 ? 'positive' : 'negative',
+        ]);
+
+        return response()->json($point, 201);
+    }
+
+    /** GET /admin/students-for-points */
+    public function adminStudentsForPoints()
+    {
+        $students = \App\Models\Student::with(['user', 'class'])
+            ->get()
+            ->map(fn($s) => [
+                'id'    => $s->id,
+                'name'  => $s->user->name  ?? '--',
+                'class' => $s->class->name ?? '--',
+            ]);
+
+        return response()->json($students);
+    }
+
+    //  ADMIN – Reports
+
+    /** GET /reports?search=&type= */
+    public function adminReports(Request $request)
+    {
+        $query = Point::with(['student.user', 'teacherSubject.subject', 'teacherSubject.teacher.user']);
+
+        if ($request->filled('search')) {
+            $s = $request->search;
+            $query->whereHas('student.user', fn($q) => $q->where('name', 'like', "%$s%"))
+                  ->orWhereHas('teacherSubject.teacher.user', fn($q) => $q->where('name', 'like', "%$s%"));
+        }
+        if ($request->type === 'positive') $query->where('point', '>', 0);
+        if ($request->type === 'negative') $query->where('point', '<', 0);
+
+        $records = $query->orderByDesc('point_date')->get()->map(fn($p) => [
+            'student'     => $p->student->user->name                    ?? '--',
+            'teacher'     => $p->teacherSubject->teacher->user->name     ?? '--',
+            'subject'     => $p->teacherSubject->subject->name           ?? '--',
+            'description' => $p->description,
+            'points'      => $p->point,
+            'type'        => $p->type ?? ($p->point >= 0 ? 'positive' : 'negative'),
+            'date'        => $p->point_date,
+        ]);
+
+        return response()->json($records);
+    }
+
+    /** GET /reports/stats */
+    public function adminReportStats()
+    {
+        $total        = Point::sum('point');
+        $awarded      = Point::where('point', '>', 0)->sum('point');
+        $deducted     = Point::where('point', '<', 0)->sum('point');
+        $transactions = Point::count();
+
+        return response()->json(compact('total', 'awarded', 'deducted', 'transactions'));
     }
 }

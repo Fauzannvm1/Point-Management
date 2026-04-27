@@ -16,6 +16,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
+use SebastianBergmann\CodeCoverage\DeadCodeDetectionNotSupportedException;
 
 class AuthController extends Controller
 {
@@ -30,6 +31,12 @@ class AuthController extends Controller
 
         return back()->with('error', 'Email atau Password Salah');
     }
+    
+    public function login()
+    {
+        return view('auth.login');
+    }
+
 
     public function showRegister()
     {
@@ -48,9 +55,7 @@ class AuthController extends Controller
         };
     }
 
-    // ============================================================
     // DASHBOARDS
-    // ============================================================
 
     private function adminDashboard()
     {
@@ -91,6 +96,15 @@ class AuthController extends Controller
     private function teacherDashboard()
     {
         $teacher = Auth::user()->teacher;
+
+        if (!$teacher) {
+            $this->forceLogout();
+            return redirect()->back()->with('error', 'Terjadi kesalahan.'); 
+            return redirect('dashboard')->withErrors([
+                'email' => 'Teacher Profile Not Found'
+            ]);
+        }
+
         $tsIds   = TeacherSubject::where('teacher_id', $teacher->id)->pluck('id');
 
         $totalTasks     = Task::whereIn('teacher_subject_id', $tsIds)->count();
@@ -133,14 +147,73 @@ class AuthController extends Controller
     {
         $student = Auth::user()->student;
 
+        if (!$student) {
+            $this->forceLogout();
+            return redirect()->back()->with('error', 'Terjadi kesalahan.'); 
+            return redirect('dashboard')->withErrors([
+                'email' => 'Student Profile Not Found'
+            ]);
+        }
+
+        // Stat cards 
+        $pending   = TaskSubmission::where('student_id', $student->id)
+                        ->where('status', 'taken')->count();
+        $submitted = TaskSubmission::where('student_id', $student->id)
+                        ->where('status', 'submitted')->count();
+        $graded    = TaskSubmission::where('student_id', $student->id)
+                        ->where('status', 'graded')->count();
+        $totalPts  = Point::where('student_id', $student->id)->sum('point');
+
+        //Upcoming tasks for student's class
+        $upcoming = Task::with(['teacherSubject.subject'])
+            ->whereHas('teacherSubject', fn($q) =>
+                $q->where('class_id', $student->class_id)
+            )
+            ->where(fn($q) =>
+                $q->whereNull('due_date')->orWhere('due_date', '>=', today())
+            )
+            ->orderBy('due_date')
+            ->limit(6)
+            ->get()
+            ->map(function ($t) use ($student) {
+                $sub = TaskSubmission::where('task_id', $t->id)
+                                    ->where('student_id', $student->id)
+                                    ->first();
+                return [
+                    'id'        => $t->id,
+                    'title'     => $t->title,
+                    'subject'   => $t->teacherSubject->subject->name ?? '--',
+                    'due_date'  => $t->due_date,
+                    'my_status' => $sub ? $sub->status : 'available',
+                ];
+            });
+
+        // Recent points
+        $recentPoints = Point::with('teacherSubject.subject')
+            ->where('student_id', $student->id)
+            ->orderByDesc('point_date')
+            ->limit(5)
+            ->get()
+            ->map(fn($p) => [
+                'subject'     => $p->teacherSubject->subject->name ?? '--',
+                'description' => $p->description,
+                'points'      => $p->point,
+                'date'        => $p->point_date,
+            ]);
+
         return view('dashboard.student', [
-            'totalPoints' => $student->totalPoints(),
-            'monthPoints' => $student->monthPoints(),
-            'history'     => $student->points()
-                                     ->with(['teacherSubject.teacher.user', 'teacherSubject.subject'])
-                                     ->latest()
-                                     ->take(10)
-                                     ->get(),
+            'totalTasks'     => $pending + $submitted + $graded,
+            'pendingTasks'   => $pending,
+            'submittedTasks' => $submitted + $graded,
+            'totalPoints'    => $totalPts,
+            'recentTasks'    => $upcoming->map(fn($t) => [
+                'title'   => $t['title'],
+                'subject' => $t['subject'],
+                'due'     => $t['due_date']
+                            ? \Carbon\Carbon::parse($t['due_date'])->format('d M')
+                            : '--',
+                'status'  => $t['my_status'],
+            ]),
         ]);
     }
 
@@ -182,6 +255,13 @@ class AuthController extends Controller
             'role'     => $request->role,
         ]);
 
+        match ($request->role) {
+            'teacher' => \App\Models\Teacher::create(['user_id' => $user->id]),
+            'student' => \App\Models\Student::create(['user_id' => $user->id]),
+            'parent'  => \App\Models\Parents::create(['user_id' => $user->id]),
+            default => null,
+        };
+
         Auth::login($user);
         return redirect('/dashboard')->with('success', 'Akun berhasil dibuat.');
     }
@@ -192,10 +272,14 @@ class AuthController extends Controller
         $request->session()->regenerateToken();
         return redirect()->route('login');
     }
+    function forceLogout()
+    {
+        Auth::Logout();
+        request()->session()->invalidate();
+        request()->session()->regenerateToken();
+    }
 
-    // ============================================================
     // USERS (Admin API)
-    // ============================================================
 
     public function getUsers(Request $request)
     {
@@ -267,9 +351,7 @@ class AuthController extends Controller
         return response()->json(['message' => 'User deleted.']);
     }
 
-    // ============================================================
     // SUBJECTS (Admin API)
-    // ============================================================
 
     public function getSubjects()
     {
@@ -307,9 +389,7 @@ class AuthController extends Controller
         return response()->json(['message' => 'Subject deleted.']);
     }
 
-    // ============================================================
     // TEACHER SUBJECTS (Admin API)
-    // ============================================================
 
     public function getTeacherSubjects()
     {
@@ -331,12 +411,17 @@ class AuthController extends Controller
     public function getTeacherSubjectFormData()
     {
         return response()->json([
-            'teachers' => Teacher::with('user')->get()->map(fn($t) => [
-                'id'   => $t->id,
-                'name' => $t->user->name ?? '—',
-            ]),
-            'subjects' => Subject::all(['id', 'name']),
-            'classes'  => Classes::all(['id', 'name']),
+            TeacherSubject::with(['teacher.user', 'subject', 'class'])
+            ->get()
+            ->map(fn($ts) => [
+                'id'         => $ts->id,
+                'teacher_id' => $ts->teacher_id,   // ← needed for edit
+                'subject_id' => $ts->subject_id,   // ← needed for edit
+                'class_id'   => $ts->class_id,     // ← needed for edit
+                'teacher'    => $ts->teacher->user->name ?? '—',
+                'subject'    => $ts->subject->name       ?? '—',
+                'class'      => $ts->class->name         ?? '—',
+            ])
         ]);
     }
 
@@ -383,9 +468,7 @@ class AuthController extends Controller
         return response()->json(['message' => 'Deleted.']);
     }
 
-    // ============================================================
     // REPORTS (Admin API)
-    // ============================================================
 
     public function getReports(Request $request)
     {
@@ -411,12 +494,13 @@ class AuthController extends Controller
 
         return response()->json(
             $query->latest()->get()->map(fn($r) => [
-                'student'  => $r->student->user->name                    ?? '—',
-                'teacher'  => $r->teacherSubject->teacher->user->name    ?? '—',
-                'subject'  => $r->teacherSubject->subject->name          ?? '—',
-                'points'   => $r->point,
-                'type'     => $r->point >= 0 ? 'positive' : 'negative',
-                'date'     => $r->point_date,
+                'student'     => $r->student->user->name                    ?? '—',
+                'teacher'     => $r->teacherSubject->teacher->user->name    ?? '—',
+                'subject'     => $r->teacherSubject->subject->name          ?? '—',
+                'description' => $r->description,
+                'points'      => $r->point,
+                'type'        => $r->point >= 0 ? 'positive' : 'negative',
+                'date'        => $r->point_date,
             ])
         );
     }
@@ -431,9 +515,7 @@ class AuthController extends Controller
         ]);
     }
 
-    // ============================================================
     // TASKS (Admin API)
-    // ============================================================
 
     public function getTasks()
     {
@@ -476,9 +558,7 @@ class AuthController extends Controller
         $task->delete();
         return response()->json(['message' => 'Task deleted.']);
     }
-    // ============================================================
     // POINTS (Admin — manual award)
-    // ============================================================
 
     public function getStudentsForPoints()
     {
