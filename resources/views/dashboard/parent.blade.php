@@ -3,6 +3,7 @@
 
 <ul>
     <li>View Child Points</li>
+    <p>bla</p>
 </ul>
 <br>
 <a href="{{ route ('logout') }}">Log Out</a>
