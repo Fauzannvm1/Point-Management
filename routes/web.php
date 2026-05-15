@@ -67,12 +67,16 @@ Route::middleware('auth')->group(function () {
         // Points (admin manual)
         Route::get('/admin/students-for-points',  [AuthController::class, 'getStudentsForPoints']);
         Route::post('/admin/points',              [AuthController::class, 'storePoint']);
-
-        Route::get('/admin/classes',              [TaskController::class, 'classesIndex']);
-        Route::post('/admin/classes',             [TaskController::class, 'classesStore']);
-        Route::put('/admin/classes/{class}',      [TaskController::class, 'classesUpdate']);
-        Route::delete('/admin/classes/{class}',   [TaskController::class, 'classesDestroy']);
-    });
+        
+        Route::get   ('/admin/classes',                                 [ClassController::class, 'adminIndex']);
+        Route::get   ('/admin/classes/{id}',                            [ClassController::class, 'adminShow']);
+        Route::post   ('/admin/classes',                                [ClassController::class, 'adminStore']);
+        Route::put   ('/admin/classes/{id}',                            [ClassController::class, 'adminUpdate']);
+        Route::delete('/admin/classes/{id}',                            [ClassController::class, 'adminDestroy']);
+        Route::get ('/admin/classes/{id}/students',                     [ClassController::class, 'adminStudents']);
+        Route::post ('/admin/classes/{id}/students',                    [ClassController::class, 'adminAddStudent']);
+        Route::delete ('/admin/classes/{classId}/students/{studentId}', [ClassController::class, 'adminRemoveStudent']);
+        });
 
     Route::middleware('role:teacher')->prefix('teacher')->group(function () {
  
@@ -111,7 +115,7 @@ Route::middleware('auth')->group(function () {
         Route::delete('classes/{classId}/students/{studentId}',  [ClassController::class, 'teacherRemoveStudent'])  ->name('classes.students.remove');
     });
  
-    // ── Student ────────────────────────────────────────────────────────────
+    // Student
     Route::middleware('role:student')->prefix('student')->group(function () {
  
         // Route::get('/dashboard',                  [TaskController::class, 'studentDashboard']);
@@ -129,5 +133,6 @@ Route::middleware('auth')->group(function () {
         Route::post('classes/join',               [ClassController::class, 'studentJoin'])->name('classes.join');
         Route::delete('classes/{id}/leave',       [ClassController::class, 'studentLeave'])->name('classes.leave');
     });
-    Route::middleware('role:teacher')->get('/admin/classes', [TaskController::class, 'classesIndex']);
+    Route::middleware('role:admin,teacher')
+            ->get('/admin/classes', [TaskController::class, 'classesIndex']);
 });

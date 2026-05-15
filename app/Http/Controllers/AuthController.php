@@ -64,6 +64,7 @@ class AuthController extends Controller
             'totalTeachers'    => User::where('role', 'teacher')->count(),
             'totalPoints'      => Point::sum('point'),
             'totalTasks'       => Task::count(),
+            'totalClasses'     => Classes::count(),
             'newStudentsMonth' => User::where('role', 'student')
                                      ->whereMonth('created_at', now()->month)
                                      ->whereYear('created_at', now()->year)

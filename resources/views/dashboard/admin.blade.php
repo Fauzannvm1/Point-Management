@@ -317,10 +317,42 @@
     }
     .cls-card:hover { border-color: #c7d2fe; box-shadow: 0 4px 16px rgba(99,102,241,0.1); transform: translateY(-1px); }
 
+    /* Clickable class card for dashboard */
+    .dash-cls-card {
+      background: #fff;
+      border: 1px solid #e8eaef;
+      border-radius: 12px;
+      padding: 14px;
+      cursor: pointer;
+      transition: all 0.18s;
+      position: relative;
+      overflow: hidden;
+    }
+    .dash-cls-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+    }
+    .dash-cls-card:hover {
+      border-color: #c7d2fe;
+      box-shadow: 0 6px 20px rgba(99,102,241,0.12);
+      transform: translateY(-2px);
+    }
+    .dash-cls-card:active { transform: translateY(0); }
+
     .cls-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
       gap: 14px;
+    }
+
+    /* Dashboard classes mini grid */
+    .dash-cls-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 10px;
+      padding: 14px;
     }
 
     /* Mobile bottom nav */
@@ -352,6 +384,42 @@
     .mobile-nav-item svg { width: 19px; height: 19px; }
     .mobile-nav-item.on { color: #a5b4fc; }
 
+    /* Class detail panel (slide-in) */
+    .class-panel {
+      position: fixed;
+      inset: 0;
+      z-index: 300;
+      display: flex;
+      align-items: stretch;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.25s;
+    }
+    .class-panel.on {
+      pointer-events: all;
+      opacity: 1;
+    }
+    .class-panel-backdrop {
+      flex: 1;
+      background: rgba(15,17,23,0.55);
+      backdrop-filter: blur(3px);
+      cursor: pointer;
+    }
+    .class-panel-body {
+      width: 520px;
+      max-width: 100vw;
+      background: #fff;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transform: translateX(100%);
+      transition: transform 0.28s cubic-bezier(0.4,0,0.2,1);
+      box-shadow: -12px 0 50px rgba(0,0,0,0.15);
+    }
+    .class-panel.on .class-panel-body {
+      transform: translateX(0);
+    }
+
     @media (max-width: 1024px) {
       .sidebar { padding-bottom: 70px; transform: translateX(-100%); }
       .sidebar.open { transform: translateX(0); }
@@ -374,6 +442,8 @@
       .hide-mobile { display: none !important; }
       .mobile-nav  { display: flex !important; }
       .cls-grid { grid-template-columns: 1fr !important; }
+      .dash-cls-grid { grid-template-columns: 1fr 1fr !important; }
+      .class-panel-body { width: 100vw; }
     }
   </style>
 </head>
@@ -555,17 +625,13 @@
       </div>
       <button onclick="closeModal('mClassStudents')" style="width:28px;height:28px;border-radius:8px;background:#f1f5f9;border:none;cursor:pointer;color:#64748b;font-size:18px;line-height:1">×</button>
     </div>
-
-    <!-- Add student manually -->
     <div style="display:flex;gap:8px;margin-bottom:14px">
       <select id="csAddSelect" class="form-input" style="flex:1"><option value="">-- Add a student --</option></select>
       <button onclick="addStudentToClass()" class="btn-primary" style="flex-shrink:0;padding:8px 14px">Add</button>
     </div>
-
     <div id="csStuList" style="max-height:340px;overflow-y:auto">
       <div style="text-align:center;padding:30px;color:#94a3b8;font-size:13px">Loading...</div>
     </div>
-
     <input type="hidden" id="csClassId">
     <div style="margin-top:14px">
       <button onclick="closeModal('mClassStudents')" class="btn-secondary" style="width:100%;justify-content:center">Close</button>
@@ -590,6 +656,84 @@
 </div>
 
 
+<!-- ===== CLASS DETAIL PANEL ===== -->
+<div class="class-panel" id="classPanel">
+  <div class="class-panel-backdrop" onclick="closeClassPanel()"></div>
+  <div class="class-panel-body">
+    <!-- Header -->
+    <div id="cpHeader" style="padding:0;flex-shrink:0">
+      <div id="cpBanner" style="height:90px;position:relative;display:flex;align-items:flex-end;padding:16px 20px;gap:12px">
+        <div id="cpInitial" style="width:52px;height:52px;border-radius:14px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;color:#6366f1;flex-shrink:0;box-shadow:0 4px 14px rgba(0,0,0,0.15)">A</div>
+        <div style="min-width:0">
+          <h2 id="cpName" style="font-size:17px;font-weight:800;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Class Name</h2>
+          <p id="cpSubject" style="font-size:12px;color:rgba(255,255,255,0.75);margin-top:1px">Subject</p>
+        </div>
+        <button onclick="closeClassPanel()" style="position:absolute;top:12px;right:14px;width:28px;height:28px;border-radius:8px;background:rgba(255,255,255,0.2);border:none;cursor:pointer;color:#fff;font-size:18px;line-height:1;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)">×</button>
+      </div>
+    </div>
+
+    <!-- Info row -->
+    <div style="padding:14px 20px;border-bottom:1px solid #f1f5f9;display:flex;align-items:stretch;gap:10px;flex-shrink:0;background:#fff">
+      <div style="flex:1;background:#f9fafb;border-radius:10px;padding:10px 12px;border:1px solid #e8eaef">
+        <p style="font-size:9px;font-weight:700;color:#6366f1;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:4px">Homeroom Teacher</p>
+        <div style="display:flex;align-items:center;gap:7px">
+          <div id="cpTeacherAvatar" style="width:26px;height:26px;border-radius:50%;background:#f0f1ff;color:#6366f1;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex-shrink:0">T</div>
+          <p id="cpTeacher" style="font-size:13px;font-weight:700;color:#1e2130">--</p>
+        </div>
+      </div>
+      <div style="background:#f9fafb;border-radius:10px;padding:10px 12px;border:1px solid #e8eaef;text-align:center;min-width:70px">
+        <p style="font-size:9px;font-weight:700;color:#3b82f6;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:4px">Students</p>
+        <p id="cpStudentCount" style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:700;color:#1e2130">--</p>
+      </div>
+      <div style="background:#f9fafb;border-radius:10px;padding:10px 12px;border:1px solid #e8eaef;text-align:center;min-width:60px">
+        <p style="font-size:9px;font-weight:700;color:#10b981;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:4px">Tasks</p>
+        <p id="cpTaskCount" style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:700;color:#1e2130">--</p>
+      </div>
+    </div>
+
+    <!-- Code + description -->
+    <div style="padding:12px 20px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;gap:10px;flex-shrink:0">
+      <div style="display:flex;align-items:center;gap:6px">
+        <span style="font-size:10px;font-weight:600;color:#94a3b8;text-transform:uppercase">Join Code</span>
+        <span id="cpCode" style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:#6366f1;background:#f0f1ff;padding:3px 10px;border-radius:6px;border:1px solid #e0e2ff">--</span>
+      </div>
+      <p id="cpDesc" style="font-size:12px;color:#94a3b8;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></p>
+    </div>
+
+    <!-- Action buttons -->
+    <div style="padding:10px 20px;border-bottom:1px solid #f1f5f9;display:flex;gap:8px;flex-shrink:0">
+      <button id="cpEditBtn" onclick="editClassFromPanel()" class="btn-edit" style="flex:1;justify-content:center">
+        <svg style="width:12px;height:12px" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+        Edit Class
+      </button>
+      <button id="cpManageBtn" onclick="manageStudentsFromPanel()" class="btn-primary" style="flex:1;justify-content:center">
+        <svg style="width:12px;height:12px" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+        Add Students
+      </button>
+      <button id="cpDelBtn" onclick="deleteClassFromPanel()" class="btn-danger" style="padding:8px 12px">
+        <svg style="width:12px;height:12px" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+      </button>
+    </div>
+
+    <!-- Tabs -->
+    <div style="padding:0 20px;border-bottom:1px solid #f1f5f9;display:flex;gap:0;flex-shrink:0">
+      <button onclick="switchCPTab('students')" id="cpTabStudents" style="padding:10px 16px;font-size:12px;font-weight:700;border:none;background:transparent;cursor:pointer;border-bottom:2px solid #6366f1;color:#6366f1;font-family:'Syne',sans-serif">Students</button>
+      <button onclick="switchCPTab('tasks')" id="cpTabTasks" style="padding:10px 16px;font-size:12px;font-weight:600;border:none;background:transparent;cursor:pointer;border-bottom:2px solid transparent;color:#94a3b8;font-family:'Syne',sans-serif">Tasks</button>
+    </div>
+
+    <!-- Tab content -->
+    <div style="flex:1;overflow-y:auto">
+      <div id="cpStudentsTab">
+        <div id="cpStudentList" style="min-height:100px"></div>
+      </div>
+      <div id="cpTasksTab" style="display:none">
+        <div id="cpTaskList" style="min-height:100px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
 <!-- App shell -->
 <div class="shell">
 
@@ -608,11 +752,9 @@
 
     <div style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,.08)">
       <div style="display:flex;align-items:center;gap:10px">
-        <div style="width:28px;height:28px;border-radius:50%;background:rgba(99,102,241,.2);border:1px solid rgba(99,102,241,.3);display:flex;align-items:center;justify-content:center;color:#a5b4fc;font-weight:700;font-size:11px;flex-shrink:0">
-          {{ strtoupper(substr(auth()->user()->name, 0, 1)) }}
-        </div>
+        <div style="width:28px;height:28px;border-radius:50%;background:rgba(99,102,241,.2);border:1px solid rgba(99,102,241,.3);display:flex;align-items:center;justify-content:center;color:#a5b4fc;font-weight:700;font-size:11px;flex-shrink:0">A</div>
         <div style="min-width:0">
-          <p style="color:#fff;font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ auth()->user()->name }}</p>
+          <p style="color:#fff;font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Admin User</p>
           <span class="badge" style="background:rgba(99,102,241,.2);color:#a5b4fc">admin</span>
         </div>
       </div>
@@ -672,7 +814,7 @@
         </button>
         <div>
           <h1 style="font-size:14px;font-weight:700;color:#1e2130" id="pageTitle">Dashboard</h1>
-          <p style="font-size:11px;color:#94a3b8">Welcome back, {{ auth()->user()->name }}</p>
+          <p style="font-size:11px;color:#94a3b8">Welcome back, Admin</p>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:8px">
@@ -680,9 +822,7 @@
           <svg style="width:18px;height:18px" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
           <span class="notif-dot"></span>
         </button>
-        <div style="width:30px;height:30px;border-radius:50%;background:#6366f1;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:11px">
-          {{ strtoupper(substr(auth()->user()->name, 0, 1)) }}
-        </div>
+        <div style="width:30px;height:30px;border-radius:50%;background:#6366f1;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:11px">A</div>
       </div>
     </header>
 
@@ -691,29 +831,30 @@
 
       <!-- = Page: Dashboard = -->
       <div id="p-dash" class="page on">
+        <!-- Stats -->
         <div class="grid-4" style="margin-bottom:16px">
           <div class="card" style="padding:16px">
             <div style="display:flex;align-items:start;justify-content:space-between;margin-bottom:10px">
               <div style="width:36px;height:36px;border-radius:10px;background:#eff6ff;display:flex;align-items:center;justify-content:center"><svg style="width:17px;height:17px;color:#3b82f6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M12 14l9-5-9-5-9 5 9 5z"/><path d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z"/></svg></div>
-              <span class="badge" style="background:#f0fdf4;color:#16a34a">+{{ $newStudentsMonth }} this month</span>
+              <span class="badge" style="background:#f0fdf4;color:#16a34a" id="dNewStudents">+0 this month</span>
             </div>
-            <p class="stat-number" style="color:#1e2130">{{ $totalStudents }}</p>
+            <p class="stat-number" style="color:#1e2130" id="dTotalStudents">{{ $totalStudents }}</p>
             <p style="font-size:12px;color:#64748b;margin-top:2px">Total Students</p>
           </div>
           <div class="card" style="padding:16px">
             <div style="display:flex;align-items:start;justify-content:space-between;margin-bottom:10px">
               <div style="width:36px;height:36px;border-radius:10px;background:#f5f3ff;display:flex;align-items:center;justify-content:center"><svg style="width:17px;height:17px;color:#8b5cf6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg></div>
-              <span class="badge" style="background:#f0fdf4;color:#16a34a">+{{ $newTeachersMonth }} this month</span>
+              <span class="badge" style="background:#f0fdf4;color:#16a34a" id="dNewTeachers">+0 this month</span>
             </div>
-            <p class="stat-number" style="color:#1e2130">{{ $totalTeachers }}</p>
+            <p class="stat-number" style="color:#1e2130" id="dTotalTeachers">{{ $totalTeachers }}</p>
             <p style="font-size:12px;color:#64748b;margin-top:2px">Total Teachers</p>
           </div>
           <div class="card" style="padding:16px">
             <div style="display:flex;align-items:start;justify-content:space-between;margin-bottom:10px">
               <div style="width:36px;height:36px;border-radius:10px;background:#fffbeb;display:flex;align-items:center;justify-content:center"><svg style="width:17px;height:17px;color:#f59e0b" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/></svg></div>
-              <span class="badge" style="background:#eff6ff;color:#2563eb">+{{ $pointsToday }} today</span>
+              <span class="badge" style="background:#eff6ff;color:#2563eb" id="dPointsToday">+0 today</span>
             </div>
-            <p class="stat-number" style="color:#1e2130">{{ number_format($totalPoints) }}</p>
+            <p class="stat-number" style="color:#1e2130" id="dTotalPoints">{{ $totalPoints }}</p>
             <p style="font-size:12px;color:#64748b;margin-top:2px">Total Points Given</p>
           </div>
           <div class="card" style="padding:16px">
@@ -721,19 +862,49 @@
               <div style="width:36px;height:36px;border-radius:10px;background:#ecfdf5;display:flex;align-items:center;justify-content:center"><svg style="width:17px;height:17px;color:#10b981" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg></div>
               <span class="badge" style="background:#f1f2f6;color:#64748b">Active</span>
             </div>
-            <p class="stat-number" style="color:#1e2130">{{ $totalTasks }}</p>
+            <p class="stat-number" style="color:#1e2130" id="dTotalTasks">{{ $totalTasks }}</p>
             <p style="font-size:12px;color:#64748b;margin-top:2px">Total Tasks</p>
           </div>
         </div>
+
+        <!-- Main content columns -->
         <div class="dash-cols" style="display:grid;grid-template-columns:1fr 290px;gap:14px">
-          <div class="card" style="overflow:hidden">
-            <div style="padding:13px 18px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
-              <h2 style="font-size:13px;font-weight:600;color:#1e2130">Recent Point Activity</h2>
-              <a onclick="goToPage('rep',document.getElementById('n-rep'))" style="font-size:12px;color:#6366f1;cursor:pointer;font-weight:600">View all</a>
+
+          <!-- Left column: Activity + Classes -->
+          <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+
+            <!-- Classes section -->
+            <div class="card" style="overflow:hidden">
+              <div style="padding:13px 18px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <h2 style="font-size:13px;font-weight:600;color:#1e2130">Classes</h2>
+                  <span id="dashClsCount" class="badge" style="background:#f0f1ff;color:#6366f1">{{ $totalTasks }}</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px">
+                  <button onclick="openAddClass()" style="display:flex;align-items:center;gap:5px;padding:5px 10px;border-radius:7px;background:#6366f1;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:600;font-family:'Syne',sans-serif">
+                    <svg style="width:10px;height:10px" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                    Add
+                  </button>
+                  <a onclick="goToPage('classes',document.getElementById('n-classes'))" style="font-size:12px;color:#6366f1;cursor:pointer;font-weight:600">View all</a>
+                </div>
+              </div>
+              <div id="dashClsGrid" class="dash-cls-grid">
+                <div style="grid-column:1/-1;padding:30px;text-align:center;color:#94a3b8;font-size:13px">Loading classes...</div>
+              </div>
             </div>
-            <div id="actList"></div>
+
+            <!-- Recent Activity -->
+            <div class="card" style="overflow:hidden">
+              <div style="padding:13px 18px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
+                <h2 style="font-size:13px;font-weight:600;color:#1e2130">Recent Point Activity</h2>
+                <a onclick="goToPage('rep',document.getElementById('n-rep'))" style="font-size:12px;color:#6366f1;cursor:pointer;font-weight:600">View all</a>
+              </div>
+              <div id="actList"></div>
+            </div>
           </div>
-          <div class="card" style="overflow:hidden">
+
+          <!-- Right column: Quick Actions -->
+          <div class="card" style="overflow:hidden;align-self:start">
             <div style="padding:13px 16px;border-bottom:1px solid #f1f5f9"><h2 style="font-size:13px;font-weight:600;color:#1e2130">Quick Actions</h2></div>
             <div style="padding:10px;display:flex;flex-direction:column;gap:7px">
               <button onclick="openAddUser()" class="btn-primary" style="width:100%;justify-content:center"><svg style="width:13px;height:13px" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>Add New User</button>
@@ -786,14 +957,12 @@
             Add Class
           </button>
         </div>
-
-        <!-- Stats -->
         <div class="grid-3" style="margin-bottom:16px">
           <div class="card" style="padding:14px;display:flex;align-items:center;gap:12px">
             <div style="width:38px;height:38px;border-radius:11px;background:#f0f1ff;display:flex;align-items:center;justify-content:center;flex-shrink:0">
               <svg style="width:17px;height:17px;color:#6366f1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13"/></svg>
             </div>
-            <div><p class="stat-number" style="font-size:22px;color:#1e2130" id="clStatTotal">--</p><p style="font-size:11px;color:#64748b">Total Classes</p></div>
+            <div><p class="stat-number" style="font-size:22px;color:#1e2130" id="clStatTotal">{{ $totalClasses }}</p><p style="font-size:11px;color:#64748b">Total Classes</p></div>
           </div>
           <div class="card" style="padding:14px;display:flex;align-items:center;gap:12px">
             <div style="width:38px;height:38px;border-radius:11px;background:#eff6ff;display:flex;align-items:center;justify-content:center;flex-shrink:0">
@@ -805,11 +974,9 @@
             <div style="width:38px;height:38px;border-radius:11px;background:#ecfdf5;display:flex;align-items:center;justify-content:center;flex-shrink:0">
               <svg style="width:17px;height:17px;color:#10b981" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
             </div>
-            <div><p class="stat-number" style="font-size:22px;color:#1e2130" id="clStatTasks">--</p><p style="font-size:11px;color:#64748b">Total Tasks</p></div>
+            <div><p class="stat-number" style="font-size:22px;color:#1e2130" id="clStatTasks">{{ $totalTasks }}</p><p style="font-size:11px;color:#64748b">Total Tasks</p></div>
           </div>
         </div>
-
-        <!-- Search/filter bar -->
         <div class="card" style="padding:10px;margin-bottom:12px;display:flex;flex-wrap:wrap;gap:8px">
           <div style="position:relative;flex:1;min-width:160px">
             <svg style="width:13px;height:13px;color:#94a3b8;position:absolute;left:10px;top:50%;transform:translateY(-50%)" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
@@ -818,8 +985,6 @@
           <select id="clSubjF" onchange="filterClasses()" class="form-input" style="width:auto;min-width:120px"><option value="">All Subjects</option></select>
           <select id="clTeachF" onchange="filterClasses()" class="form-input" style="width:auto;min-width:120px"><option value="">All Teachers</option></select>
         </div>
-
-        <!-- Classes grid -->
         <div id="clGrid" class="cls-grid"></div>
         <div id="clEmpty" style="display:none;text-align:center;padding:50px 20px;color:#94a3b8">
           <div style="width:52px;height:52px;border-radius:16px;background:#f0f1ff;border:1px solid #e0e2ff;display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px">
@@ -968,14 +1133,16 @@
 
 
 <script>
+// ---- Replace with Laravel blade values in production ----
 const CSRF           = '{{ csrf_token() }}';
-const recentActivity = @json($recentActivity);
+const recentActivity = typeof _recentActivity !== 'undefined' ? _recentActivity : [];
 
 const PAGE_TITLES = { dash:'Dashboard', users:'Manage Users', classes:'Manage Classes', tasks:'Manage Tasks', points:'Give Points', subj:'Subjects', rep:'Reports' };
 const ROLE_COLORS = { admin:'background:#eff6ff;color:#2563eb', teacher:'background:#f5f3ff;color:#7c3aed', student:'background:#eff6ff;color:#0284c7', parent:'background:#fffbeb;color:#d97706' };
 const CLS_PALETTES = [
   ['#6366f1','#a855f7'],['#3b82f6','#06b6d4'],['#10b981','#3b82f6'],
-  ['#f59e0b','#ef4444'],['#8b5cf6','#ec4899'],
+  ['#f59e0b','#ef4444'],['#8b5cf6','#ec4899'],['#0ea5e9','#6366f1'],
+  ['#14b8a6','#3b82f6'],['#f97316','#f59e0b'],
 ];
 
 function getInitials(name) { return (name||'?').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2); }
@@ -998,7 +1165,7 @@ function goToPage(name, el) {
   if (el) el.classList.add('on');
   document.getElementById('pageTitle').textContent = PAGE_TITLES[name] || name;
   document.getElementById('scr').scrollTop = 0;
-  if (name==='dash')    renderActivityFeed();
+  if (name==='dash')    { renderActivityFeed(); loadDashClasses(); }
   if (name==='users')   loadUsers();
   if (name==='classes') loadClasses();
   if (name==='tasks')   loadTasks();
@@ -1019,7 +1186,259 @@ function closeModal(id) { document.getElementById(id).classList.remove('on'); }
 document.querySelectorAll('.modal').forEach(m => m.addEventListener('click', function(e){ if(e.target===this) this.classList.remove('on'); }));
 
 
-//  DASHBOARD 
+// ===== DASHBOARD CLASSES =====
+
+let dashClasses = [];
+
+async function loadDashClasses() {
+  const grid = document.getElementById('dashClsGrid');
+  grid.innerHTML = '<div style="grid-column:1/-1;padding:30px;text-align:center;color:#94a3b8;font-size:13px">Loading classes...</div>';
+
+  const {ok, data} = await apiFetch('/admin/classes');
+  if (!ok) {
+    grid.innerHTML = '<div style="grid-column:1/-1;padding:30px;text-align:center;color:#94a3b8;font-size:13px">Could not load classes.</div>';
+    return;
+  }
+
+  dashClasses = data.classes || data;
+  document.getElementById('dashClsCount').textContent = dashClasses.length;
+  renderDashClasses();
+}
+
+function renderDashClasses() {
+  const grid = document.getElementById('dashClsGrid');
+  if (!dashClasses.length) {
+    grid.innerHTML = `<div style="grid-column:1/-1;padding:30px;text-align:center;color:#94a3b8;font-size:13px">
+      No classes yet. <button onclick="openAddClass()" style="color:#6366f1;font-weight:600;background:none;border:none;cursor:pointer;font-family:'Syne',sans-serif">Create one →</button>
+    </div>`;
+    return;
+  }
+
+  grid.innerHTML = dashClasses.map((c, i) => {
+    const [from, to] = CLS_PALETTES[i % CLS_PALETTES.length];
+    const initial = (c.name||'?')[0].toUpperCase();
+    const teacher = c.teacher_name || '--';
+    const subject = c.subject_name || '--';
+    return `
+      <div class="dash-cls-card" onclick="openClassPanel(${c.id})" style="border-top:3px solid ${from}">
+        <div style="display:flex;align-items:center;gap:9px;margin-bottom:8px">
+          <div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,${from},${to});display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff;font-weight:800;font-size:15px">${initial}</div>
+          <div style="min-width:0;flex:1">
+            <p style="font-size:13px;font-weight:700;color:#1e2130;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.name}</p>
+            <p style="font-size:10px;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${subject}</p>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:5px;margin-bottom:8px">
+          <div style="width:18px;height:18px;border-radius:50%;background:linear-gradient(135deg,${from},${to});display:flex;align-items:center;justify-content:center;color:#fff;font-size:7px;font-weight:700;flex-shrink:0">${(teacher[0]||'?').toUpperCase()}</div>
+          <p style="font-size:11px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${teacher}</p>
+        </div>
+        <div style="display:flex;gap:6px">
+          <div style="flex:1;background:#f0f1ff;border-radius:6px;padding:5px;text-align:center;border:1px solid #e0e2ff">
+            <p style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:#6366f1">${c.student_count ?? 0}</p>
+            <p style="font-size:8px;color:#94a3b8;font-weight:600">Students</p>
+          </div>
+          <div style="flex:1;background:#ecfdf5;border-radius:6px;padding:5px;text-align:center;border:1px solid #bbf7d0">
+            <p style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:#10b981">${c.task_count ?? 0}</p>
+            <p style="font-size:8px;color:#94a3b8;font-weight:600">Tasks</p>
+          </div>
+          <div style="flex:1;background:#f9fafb;border-radius:6px;padding:5px;text-align:center;border:1px solid #e8eaef">
+            <p style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:#6366f1;letter-spacing:0.05em">${c.code || '--'}</p>
+            <p style="font-size:8px;color:#94a3b8;font-weight:600">Code</p>
+          </div>
+        </div>
+        <div style="margin-top:8px;display:flex;align-items:center;gap:4px;color:#6366f1">
+          <p style="font-size:10px;font-weight:600">View details</p>
+          <svg style="width:10px;height:10px" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+
+// ===== CLASS DETAIL PANEL =====
+
+let currentPanelClassId = null;
+let currentPanelTab = 'students';
+
+async function openClassPanel(classId) {
+  const c = dashClasses.find(x => x.id === classId) || allClasses.find(x => x.id === classId);
+  if (!c) return;
+
+  currentPanelClassId = classId;
+  currentPanelTab = 'students';
+
+  // Set palette
+  const idx = (dashClasses.findIndex(x => x.id === classId) + allClasses.findIndex(x => x.id === classId) + 1) % CLS_PALETTES.length;
+  const [from, to] = CLS_PALETTES[Math.max(0,idx) % CLS_PALETTES.length];
+
+  // Header banner gradient
+  document.getElementById('cpBanner').style.background = `linear-gradient(135deg, ${from}, ${to})`;
+  document.getElementById('cpInitial').textContent = (c.name||'?')[0].toUpperCase();
+  document.getElementById('cpInitial').style.color = from;
+  document.getElementById('cpName').textContent = c.name || '--';
+  document.getElementById('cpSubject').textContent = c.subject_name || 'No subject assigned';
+  document.getElementById('cpTeacher').textContent = c.teacher_name || 'Not assigned';
+  document.getElementById('cpTeacherAvatar').textContent = getInitials(c.teacher_name || '?');
+  document.getElementById('cpStudentCount').textContent = c.student_count ?? '--';
+  document.getElementById('cpTaskCount').textContent = c.task_count ?? '--';
+  document.getElementById('cpCode').textContent = c.code || '--';
+  document.getElementById('cpDesc').textContent = c.description || '';
+
+  // Reset tabs
+  switchCPTab('students');
+
+  // Show panel
+  document.getElementById('classPanel').classList.add('on');
+  document.body.style.overflow = 'hidden';
+
+  // Load students
+  loadPanelStudents(classId);
+}
+
+function closeClassPanel() {
+  document.getElementById('classPanel').classList.remove('on');
+  document.body.style.overflow = '';
+  currentPanelClassId = null;
+}
+
+function switchCPTab(tab) {
+  currentPanelTab = tab;
+  document.getElementById('cpStudentsTab').style.display = tab === 'students' ? 'block' : 'none';
+  document.getElementById('cpTasksTab').style.display    = tab === 'tasks'    ? 'block' : 'none';
+
+  const btnS = document.getElementById('cpTabStudents');
+  const btnT = document.getElementById('cpTabTasks');
+  if (tab === 'students') {
+    btnS.style.borderBottomColor = '#6366f1'; btnS.style.color = '#6366f1'; btnS.style.fontWeight = '700';
+    btnT.style.borderBottomColor = 'transparent'; btnT.style.color = '#94a3b8'; btnT.style.fontWeight = '600';
+    if (currentPanelClassId) loadPanelStudents(currentPanelClassId);
+  } else {
+    btnT.style.borderBottomColor = '#6366f1'; btnT.style.color = '#6366f1'; btnT.style.fontWeight = '700';
+    btnS.style.borderBottomColor = 'transparent'; btnS.style.color = '#94a3b8'; btnS.style.fontWeight = '600';
+    if (currentPanelClassId) loadPanelTasks(currentPanelClassId);
+  }
+}
+
+async function loadPanelStudents(classId) {
+  const list = document.getElementById('cpStudentList');
+  list.innerHTML = '<div style="padding:30px;text-align:center;color:#94a3b8;font-size:13px">Loading students...</div>';
+
+  const {ok, data} = await apiFetch(`/admin/classes/${classId}/students`);
+  if (!ok) { list.innerHTML = '<div style="padding:30px;text-align:center;color:#ef4444;font-size:13px">Failed to load students.</div>'; return; }
+
+  const students = data.students || [];
+
+  // Update count badge
+  document.getElementById('cpStudentCount').textContent = students.length;
+
+  if (!students.length) {
+    list.innerHTML = `<div style="padding:40px 20px;text-align:center;color:#94a3b8">
+      <div style="width:44px;height:44px;border-radius:12px;background:#f0f1ff;border:1px solid #e0e2ff;display:inline-flex;align-items:center;justify-content:center;margin-bottom:10px">
+        <svg style="width:18px;height:18px;color:#6366f1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+      </div>
+      <p style="font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">No students enrolled</p>
+      <p style="font-size:12px;margin-bottom:12px">Add students to this class.</p>
+      <button onclick="manageStudentsFromPanel()" class="btn-primary" style="margin:0 auto;font-size:12px">Add Students</button>
+    </div>`;
+    return;
+  }
+
+  list.innerHTML = students.map((s, i) => `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 20px;border-bottom:1px solid #f4f5f9">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="width:32px;height:32px;border-radius:50%;background:#f0f1ff;color:#6366f1;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${getInitials(s.name)}</div>
+        <div>
+          <p style="font-size:13px;font-weight:600;color:#1e2130">${s.name}</p>
+          <p style="font-size:11px;color:#94a3b8">${s.email}</p>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:10px;color:#94a3b8;font-family:'JetBrains Mono',monospace">${formatDateShort(s.joined_at)}</span>
+        <button onclick="removePanelStudent(${s.id})" class="btn-danger" style="padding:3px 7px;font-size:10px">✕</button>
+      </div>
+    </div>`).join('');
+}
+
+async function removePanelStudent(studentId) {
+  if (!currentPanelClassId) return;
+  const {ok, data} = await apiFetch(`/admin/classes/${currentPanelClassId}/students/${studentId}`, {method:'DELETE'});
+  if (ok) {
+    loadPanelStudents(currentPanelClassId);
+    loadDashClasses();
+  } else { alert(data.message || 'Could not remove student.'); }
+}
+
+async function loadPanelTasks(classId) {
+  const list = document.getElementById('cpTaskList');
+  list.innerHTML = '<div style="padding:30px;text-align:center;color:#94a3b8;font-size:13px">Loading tasks...</div>';
+
+  // Get tasks via admin/tasks filtered by class context
+  const {ok, data} = await apiFetch('/admin/tasks');
+  if (!ok) { list.innerHTML = '<div style="padding:30px;text-align:center;color:#ef4444;font-size:13px">Failed to load.</div>'; return; }
+
+  // Filter tasks relevant to this class via teacher_subject class_id
+  const c = dashClasses.find(x => x.id === classId) || allClasses.find(x => x.id === classId);
+  // Show all tasks from the class's teacher_subject if possible, otherwise show all
+  const tasks = data.filter ? data.filter(t => {
+    return t.teacher_subject?.class_id === classId || t.class_id === classId;
+  }) : data;
+
+  document.getElementById('cpTaskCount').textContent = tasks.length;
+
+  if (!tasks.length) {
+    list.innerHTML = `<div style="padding:40px 20px;text-align:center;color:#94a3b8">
+      <div style="width:44px;height:44px;border-radius:12px;background:#ecfdf5;border:1px solid #bbf7d0;display:inline-flex;align-items:center;justify-content:center;margin-bottom:10px">
+        <svg style="width:18px;height:18px;color:#10b981" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+      </div>
+      <p style="font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">No tasks for this class</p>
+      <p style="font-size:12px">Tasks are assigned through teacher subjects.</p>
+    </div>`;
+    return;
+  }
+
+  list.innerHTML = tasks.map(t => {
+    const expired = t.due_date && new Date(t.due_date) < new Date();
+    return `<div style="padding:12px 20px;border-bottom:1px solid #f4f5f9;display:flex;align-items:center;justify-content:space-between">
+      <div style="min-width:0;flex:1;margin-right:10px">
+        <p style="font-size:13px;font-weight:600;color:#1e2130;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.title}</p>
+        <p style="font-size:11px;color:#94a3b8;margin-top:2px">${t.teacher_subject?.subject?.name||'--'} · ${t.teacher_subject?.teacher?.user?.name||'--'}</p>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <p style="font-size:11px;font-family:'JetBrains Mono',monospace;color:${expired?'#ef4444':'#94a3b8'}">${formatDateShort(t.due_date)}</p>
+        <p style="font-size:10px;color:#64748b;margin-top:2px">${t.submissions_count||0} submissions</p>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function editClassFromPanel() {
+  if (!currentPanelClassId) return;
+  const id = currentPanelClassId;
+  closeClassPanel();
+  setTimeout(() => {
+    // If on classes page, use allClasses; otherwise use dashClasses
+    if (!allClasses.length) allClasses = dashClasses;
+    openEditClass(id);
+  }, 300);
+}
+
+function manageStudentsFromPanel() {
+  if (!currentPanelClassId) return;
+  const c = dashClasses.find(x => x.id === currentPanelClassId) || allClasses.find(x => x.id === currentPanelClassId);
+  openClassStudents(currentPanelClassId, c?.name || 'Class');
+}
+
+function deleteClassFromPanel() {
+  if (!currentPanelClassId) return;
+  const c = dashClasses.find(x => x.id === currentPanelClassId) || allClasses.find(x => x.id === currentPanelClassId);
+  closeClassPanel();
+  setTimeout(() => askDelete('class', currentPanelClassId, c?.name || 'this class'), 300);
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeClassPanel(); });
+
+
+//  DASHBOARD
 
 function renderActivityFeed() {
   const el = document.getElementById('actList');
@@ -1035,7 +1454,7 @@ function renderActivityFeed() {
 }
 
 
-//  USERS 
+//  USERS
 
 let allUsers=[], editUserId=null;
 
@@ -1101,7 +1520,7 @@ document.getElementById('uSearch').addEventListener('input', loadUsers);
 document.getElementById('uRoleF').addEventListener('change', loadUsers);
 
 
-//  CLASSES 
+//  CLASSES
 
 let allClasses=[], editClassId=null;
 
@@ -1114,7 +1533,6 @@ async function loadClasses() {
 
   allClasses = data.classes || data;
 
-  // Populate filter dropdowns
   if(data.subjects){
     const sel=document.getElementById('clSubjF'), cur=sel.value;
     sel.innerHTML='<option value="">All Subjects</option>'+data.subjects.map(s=>`<option value="${s.id}"${s.id==cur?' selected':''}>${s.name}</option>`).join('');
@@ -1124,7 +1542,6 @@ async function loadClasses() {
     sel.innerHTML='<option value="">All Teachers</option>'+data.teachers.map(t=>`<option value="${t.id}"${t.id==cur?' selected':''}>${t.name}</option>`).join('');
   }
 
-  // Stats
   const totalStudents = allClasses.reduce((s,c)=>s+(c.student_count||0),0);
   const totalTasks    = allClasses.reduce((s,c)=>s+(c.task_count||0),0);
   document.getElementById('clStatTotal').textContent    = allClasses.length;
@@ -1161,7 +1578,7 @@ function renderClasses(list) {
     const subject   = c.subject_name||'--';
     const safe      = (c.name||'').replace(/'/g,"\\'");
     return `
-      <div class="cls-card">
+      <div class="cls-card" style="cursor:pointer" onclick="openClassPanel(${c.id})">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
           <div style="display:flex;align-items:center;gap:10px;min-width:0">
             <div style="width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,${from},${to});display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff;font-weight:800;font-size:17px">${initial}</div>
@@ -1170,13 +1587,12 @@ function renderClasses(list) {
               <p style="font-size:11px;color:#64748b;margin-top:1px">${subject}</p>
             </div>
           </div>
-          <div style="display:flex;gap:4px;flex-shrink:0">
+          <div style="display:flex;gap:4px;flex-shrink:0" onclick="event.stopPropagation()">
             <button onclick="openEditClass(${c.id})" class="btn-edit" style="padding:4px 8px;font-size:11px">Edit</button>
             <button onclick="askDelete('class',${c.id},'${safe}')" class="btn-danger" style="padding:4px 8px;font-size:11px">Del</button>
           </div>
         </div>
 
-        <!-- Teacher row -->
         <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#f9fafb;border-radius:9px;border:1px solid #e8eaef">
           <div style="width:24px;height:24px;border-radius:50%;background:linear-gradient(135deg,${from},${to});display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:700;flex-shrink:0">${(teacher[0]||'?').toUpperCase()}</div>
           <div>
@@ -1185,7 +1601,6 @@ function renderClasses(list) {
           </div>
         </div>
 
-        <!-- Stats -->
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
           <div style="background:#f0f1ff;border-radius:8px;padding:7px;text-align:center;border:1px solid #e0e2ff">
             <p style="font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;color:#6366f1">${c.task_count??'--'}</p>
@@ -1195,13 +1610,12 @@ function renderClasses(list) {
             <p style="font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;color:#3b82f6">${c.student_count??'--'}</p>
             <p style="font-size:9px;color:#64748b;font-weight:600;margin-top:1px">Students</p>
           </div>
-          <div style="background:#f0fdf4;border-radius:8px;padding:7px;text-align:center;border:1px solid #bbf7d0;cursor:pointer" onclick="openClassStudents(${c.id},'${safe}')">
+          <div style="background:#f0fdf4;border-radius:8px;padding:7px;text-align:center;border:1px solid #bbf7d0;cursor:pointer" onclick="event.stopPropagation();openClassStudents(${c.id},'${safe}')">
             <p style="font-size:9px;color:#059669;font-weight:700;text-transform:uppercase;letter-spacing:0.03em">Manage</p>
             <p style="font-size:9px;color:#64748b;font-weight:600;margin-top:1px">Students</p>
           </div>
         </div>
 
-        <!-- Footer -->
         <div style="display:flex;align-items:center;justify-content:space-between;padding-top:8px;border-top:1px solid #f4f5f9">
           <div style="display:flex;align-items:center;gap:5px">
             <span style="font-size:9px;font-weight:600;color:#94a3b8;text-transform:uppercase">Code</span>
@@ -1218,45 +1632,103 @@ async function openAddClass() {
   document.getElementById('mClassTitle').textContent='Add Class';
   document.getElementById('clsSaveBtn').textContent='Add Class';
   ['clsName','clsCode','clsDesc'].forEach(id=>document.getElementById(id).value='');
-  await populateClassForm();
+  document.getElementById('clsSubject').innerHTML='<option value="">Loading...</option>';
+  document.getElementById('clsTeacher').innerHTML='<option value="">Loading...</option>';
   openModal('mClass');
+  await populateClassForm();
 }
 
 async function openEditClass(id) {
   editClassId=id;
-  const c=allClasses.find(x=>x.id===id);
+  // Try both caches
+  const c = allClasses.find(x=>x.id===id) || dashClasses.find(x=>x.id===id);
   document.getElementById('mClassTitle').textContent='Edit Class';
   document.getElementById('clsSaveBtn').textContent='Save Changes';
-  document.getElementById('clsName').value=c.name||'';
-  document.getElementById('clsCode').value=c.code||'';
-  document.getElementById('clsDesc').value=c.description||'';
-  await populateClassForm();
-  document.getElementById('clsSubject').value=c.subject_id||'';
-  document.getElementById('clsTeacher').value=c.teacher_id||'';
+  document.getElementById('clsName').value=c?.name||'';
+  document.getElementById('clsCode').value=c?.code||'';
+  document.getElementById('clsDesc').value=c?.description||'';
+  document.getElementById('clsSubject').innerHTML='<option value="">Loading...</option>';
+  document.getElementById('clsTeacher').innerHTML='<option value="">Loading...</option>';
   openModal('mClass');
+  await populateClassForm();
+  if(c) {
+    document.getElementById('clsSubject').value=c.subject_id||'';
+    document.getElementById('clsTeacher').value=c.teacher_id||'';
+  }
 }
 
 async function populateClassForm() {
   const {ok,data} = await apiFetch('/admin/classes');
   if(!ok) return;
-  document.getElementById('clsSubject').innerHTML='<option value="">-- Select --</option>'+data.subjects.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
-  document.getElementById('clsTeacher').innerHTML='<option value="">-- Select --</option>'+data.teachers.map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
+  const subjects = data.subjects || [];
+  const teachers = data.teachers || [];
+  document.getElementById('clsSubject').innerHTML='<option value="">-- Select --</option>'+subjects.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+  document.getElementById('clsTeacher').innerHTML='<option value="">-- Select --</option>'+teachers.map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
 }
 
 async function saveClass() {
-  const name=document.getElementById('clsName').value.trim();
-  const subjectId=document.getElementById('clsSubject').value;
-  const teacherId=document.getElementById('clsTeacher').value;
-  const code=document.getElementById('clsCode').value.trim().toUpperCase()||null;
-  const description=document.getElementById('clsDesc').value.trim()||null;
-  if(!name){ alert('Name are required.'); return; }
+  const name        = document.getElementById('clsName').value.trim();
+  const subjectId   = document.getElementById('clsSubject').value;
+  const teacherId   = document.getElementById('clsTeacher').value;
+  const code        = document.getElementById('clsCode').value.trim().toUpperCase() || null;
+  const description = document.getElementById('clsDesc').value.trim() || null;
 
-  const {ok,data} = await apiFetch(editClassId?`/admin/classes/${editClassId}`:'/admin/classes',{
-    method: editClassId?'PUT':'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({name, subject_id:subjectId, teacher_id:teacherId, code, description})
-  });
-  if(ok){ closeModal('mClass'); loadClasses(); } else { alert(data.message||Object.values(data.errors||{})[0]?.[0]||'Something went wrong.'); }
+  if (!name) { alert('Class name is required.'); return; }
+
+  const btn = document.getElementById('clsSaveBtn');
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+
+  const {ok, data} = await apiFetch(
+    editClassId ? `/admin/classes/${editClassId}` : '/admin/classes',
+    {
+      method: editClassId ? 'PUT' : 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        name,
+        subject_id: subjectId || null,
+        teacher_id: teacherId || null,
+        code,
+        description
+      })
+    }
+  );
+
+  btn.disabled = false;
+  btn.textContent = editClassId ? 'Save Changes' : 'Add Class';
+
+  if (ok) {
+    closeModal('mClass');
+    // Refresh both dashboard classes and classes page if open
+    loadDashClasses();
+    if (document.getElementById('p-classes').classList.contains('on')) {
+      loadClasses();
+    }
+    // Show success feedback
+    showToast(editClassId ? 'Class updated!' : 'Class created!', 'success');
+  } else {
+    const msg = data.message || Object.values(data.errors||{})[0]?.[0] || 'Something went wrong.';
+    alert(msg);
+  }
+}
+
+// Toast notification
+function showToast(message, type='success') {
+  const toast = document.createElement('div');
+  toast.style.cssText = `position:fixed;bottom:80px;right:20px;z-index:9999;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:600;font-family:'Syne',sans-serif;box-shadow:0 8px 24px rgba(0,0,0,0.15);transition:all 0.3s;opacity:0;transform:translateY(10px);display:flex;align-items:center;gap:8px;`;
+  if (type === 'success') {
+    toast.style.background = '#ecfdf5';
+    toast.style.color = '#059669';
+    toast.style.border = '1px solid #6ee7b7';
+    toast.innerHTML = `<svg style="width:14px;height:14px;flex-shrink:0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>${message}`;
+  } else {
+    toast.style.background = '#fef2f2';
+    toast.style.color = '#ef4444';
+    toast.innerHTML = message;
+  }
+  document.body.appendChild(toast);
+  requestAnimationFrame(() => { toast.style.opacity='1'; toast.style.transform='translateY(0)'; });
+  setTimeout(() => { toast.style.opacity='0'; toast.style.transform='translateY(10px)'; setTimeout(()=>toast.remove(), 300); }, 3000);
 }
 
 // Manage students modal
@@ -1266,7 +1738,6 @@ async function openClassStudents(classId, className) {
   document.getElementById('mCSMeta').textContent='Loading...';
   document.getElementById('csStuList').innerHTML='<div style="padding:30px;text-align:center;color:#94a3b8;font-size:13px">Loading...</div>';
 
-  // Load all students for "add" dropdown
   const {ok:uOk, data:uData} = await apiFetch('/users?role=student');
   if(uOk) document.getElementById('csAddSelect').innerHTML='<option value="">-- Add a student --</option>'+uData.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
 
@@ -1301,19 +1772,24 @@ async function addStudentToClass() {
   const studentId=document.getElementById('csAddSelect').value;
   if(!studentId){ alert('Select a student first.'); return; }
   const {ok,data} = await apiFetch(`/admin/classes/${classId}/students`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({student_id:studentId})});
-  if(ok){ document.getElementById('csAddSelect').value=''; refreshClassStudentList(classId); loadClasses(); }
-  else   { alert(data.message||'Could not add student.'); }
+  if(ok){
+    document.getElementById('csAddSelect').value='';
+    refreshClassStudentList(classId);
+    loadDashClasses();
+    if (currentPanelClassId == classId) loadPanelStudents(classId);
+  }
+  else { alert(data.message||'Could not add student.'); }
 }
 
 async function removeStudentFromClass(studentId) {
   const classId=document.getElementById('csClassId').value;
   const {ok,data} = await apiFetch(`/admin/classes/${classId}/students/${studentId}`,{method:'DELETE'});
-  if(ok){ refreshClassStudentList(classId); loadClasses(); }
+  if(ok){ refreshClassStudentList(classId); loadDashClasses(); }
   else   { alert(data.message||'Could not remove student.'); }
 }
 
 
-//  TASKS 
+//  TASKS
 
 let allTasks=[], editTaskId=null;
 
@@ -1377,7 +1853,7 @@ async function saveTask() {
 }
 
 
-//  POINTS 
+//  POINTS
 
 let pendingSubmissionId=null, drawerTaskId=null;
 
@@ -1433,7 +1909,7 @@ async function loadPointHistory() {
 }
 
 
-//  SUBJECTS 
+//  SUBJECTS
 
 let allSubjects=[], editSubjectId=null;
 
@@ -1477,7 +1953,7 @@ async function saveSubject() {
 }
 
 
-//  TEACHER-SUBJECT 
+//  TEACHER-SUBJECT
 
 let allTeacherSubjects=[], editTeacherSubjectId=null;
 
@@ -1561,7 +2037,7 @@ async function saveTeacherSubject() {
 }
 
 
-//  REPORTS 
+//  REPORTS
 
 async function loadReports() {
   const {ok:sOk,data:stats}=await apiFetch('/reports/stats');
@@ -1580,7 +2056,7 @@ function renderReports(data) {
       <td class="mono" style="font-size:11px;color:#94a3b8">${String(i+1).padStart(2,'0')}</td>
       <td><div style="display:flex;align-items:center;gap:7px"><div style="width:26px;height:26px;border-radius:50%;background:#f1f5f9;color:#64748b;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700">${getInitials(r.student)}</div><span style="font-size:13px;font-weight:600;color:#1e2130">${r.student}</span></div></td>
       <td class="hide-mobile" style="font-size:12px;color:#64748b">${r.teacher}</td>
-      <td class="hide-mobile" style="xfont-size:12px;color:#64748b">${r.subject||'--'}</td>
+      <td class="hide-mobile" style="font-size:12px;color:#64748b">${r.subject||'--'}</td>
       <td class="hide-mobile" style="font-size:12px;color:#94a3b8;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.description||'--'}</td>
       <td class="mono" style="font-weight:700;font-size:13px;color:${r.type==='positive'?'#059669':'#ef4444'}">${r.points>0?'+':''}${r.points}</td>
       <td class="hide-mobile mono" style="font-size:11px;color:#94a3b8">${formatDateShort(r.date)}</td>
@@ -1591,7 +2067,7 @@ document.getElementById('rSearch').addEventListener('input', loadReports);
 document.getElementById('rTypeF').addEventListener('change', loadReports);
 
 
-//  DELETE 
+//  DELETE
 
 let pendingDelete=null;
 
@@ -1611,12 +2087,13 @@ async function confirmDelete() {
     if(pendingDelete.type==='task')  loadTasks();
     if(pendingDelete.type==='subj')  loadSubjects();
     if(pendingDelete.type==='ts')    loadTeacherSubjects();
-    if(pendingDelete.type==='class') loadClasses();
+    if(pendingDelete.type==='class') { loadDashClasses(); if(document.getElementById('p-classes').classList.contains('on')) loadClasses(); }
+    showToast('Deleted successfully.');
   } else { alert(data.message||'Could not delete.'); }
 }
 
 
-//  TASK DRAWER 
+//  TASK DRAWER
 
 const drawerBackdrop=document.createElement('div');
 drawerBackdrop.style.cssText='display:none;position:fixed;inset:0;background:rgba(10,22,40,.4);z-index:199;cursor:pointer;backdrop-filter:blur(2px)';
@@ -1700,9 +2177,9 @@ function openEditTaskFromDrawer() {
   setTimeout(()=>openEditTask(id),310);
 }
 
-document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeDrawer(); });
-
+// Init
 renderActivityFeed();
+loadDashClasses();
 </script>
 </body>
 </html>
