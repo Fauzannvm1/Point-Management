@@ -601,6 +601,10 @@
         <label class="form-label">Description <span style="font-weight:400;color:#94a3b8">(optional)</span></label>
         <textarea id="clDesc" rows="3" class="form-input" style="resize:none" placeholder="Short description..."></textarea>
       </div>
+      <div>
+        <label class="form-label">Subject <span style="color:#ef4444">*</span></label>
+        <select id="clSubj" class="form-input"><option value="">Loading...</option></select>
+      </div>
       <div style="background:#f0fdf9;border:1px solid #d1faf4;border-radius:10px;padding:10px 12px;display:flex;gap:8px;align-items:flex-start">
         <svg style="width:14px;height:14px;color:#0d9488;flex-shrink:0;margin-top:1px" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
         <p style="font-size:11px;color:#0f766e;line-height:1.5">Students will join using the <strong>Join Code</strong>. You can rename this class anytime.</p>
@@ -1529,7 +1533,7 @@ async function saveSubject() {
 let allClasses=[], editClassId=null;
 
 async function loadClasses() {
-  const {ok,data}=await apiFetch('/admin/classes'); if(!ok) return;
+  const {ok,data}=await apiFetch('/teacher/classes'); if(!ok) return;
   allClasses=Array.isArray(data)?data:(data.classes||[]);
   dashClasses=allClasses; // keep in sync
   renderClasses();
@@ -1589,7 +1593,11 @@ function openAddClass() {
   document.getElementById('mClassTitle').textContent='Add Class'; document.getElementById('mClassSub').textContent='Create a new class';
   document.getElementById('clSaveBtn').textContent='Add Class';
   document.getElementById('clName').value=''; document.getElementById('clCode').value=''; document.getElementById('clDesc').value=''; document.getElementById('clId').value='';
+  document.getElementById('clSubj').innerHTML='<option value="">Loading...</option>';
   openModal('mClass');
+  apiFetch('/teacher/subjects/create').then(({ok,data}) => {
+    if(ok) document.getElementById('clSubj').innerHTML='<option value="">-- Select --</option>'+data.subjects.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+  });
 }
 
 function openEditClassFull(id) {
@@ -1598,13 +1606,18 @@ function openEditClassFull(id) {
   document.getElementById('mClassTitle').textContent='Edit Class'; document.getElementById('mClassSub').textContent='Update class details';
   document.getElementById('clSaveBtn').textContent='Save Changes';
   document.getElementById('clName').value=c.name||''; document.getElementById('clCode').value=c.join_code||c.code||''; document.getElementById('clDesc').value=c.description||''; document.getElementById('clId').value=id;
+  document.getElementById('clSubj').innerHTML='<option value="">Loading...</option>';
   openModal('mClass');
+  apiFetch('/teacher/subjects/create').then(({ok,data}) => {
+    if(ok) document.getElementById('clSubj').innerHTML='<option value="">-- Select --</option>'+data.subjects.map(s=>`<option value="${s.id}"${c.subject_name==s.name?' selected':''}>${s.name}</option>`).join('');
+  });
 }
 
 async function saveClass() {
   const name=document.getElementById('clName').value.trim();
   let code=document.getElementById('clCode').value.trim().toUpperCase();
   const desc=document.getElementById('clDesc').value.trim();
+  const subj=document.getElementById('clSubj').value;
   if(!name){ alert('Class name is required.'); return; }
 
   // Auto-generate join code if blank
@@ -1614,13 +1627,13 @@ async function saveClass() {
     document.getElementById('clCode').value=code;
   }
 
-  const payload={name, join_code:code, description:desc};
+  const payload={name, join_code:code, description:desc, subject_id:subj};
   const id=document.getElementById('clId').value;
 
   const btn=document.getElementById('clSaveBtn');
   btn.disabled=true; btn.textContent='Saving...';
 
-  const {ok,data}=await apiFetch(id?`/admin/classes/${id}`:'/admin/classes',{
+  const {ok,data}=await apiFetch(id?`/teacher/classes/${id}`:'/teacher/classes',{
     method:id?'PUT':'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)
   });
 
@@ -1644,7 +1657,7 @@ async function confirmRename() {
   const id=document.getElementById('renId').value, name=document.getElementById('renName').value.trim();
   if(!name){ alert('Name cannot be empty.'); return; }
   const c=allClasses.find(x=>x.id==id);
-  const {ok,data}=await apiFetch(`/admin/classes/${id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,join_code:c?.join_code||c?.code||'',description:c?.description||''})});
+  const {ok,data}=await apiFetch(`/teacher/classes/${id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,join_code:c?.join_code||c?.code||'',description:c?.description||''})});
   if(ok){ closeModal('mRename'); await loadClasses(); renderDashClasses(); showToast('Class renamed!'); }
   else { alert(data.message||'Could not rename.'); }
 }

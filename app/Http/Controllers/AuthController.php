@@ -13,14 +13,34 @@ use App\Models\Task;
 use App\Models\TaskSubmission;
 use App\Models\TeacherSubject;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
-use SebastianBergmann\CodeCoverage\DeadCodeDetectionNotSupportedException;
+use Illuminate\Contracts\View\View;
 
+/**
+ * Handles authentication (login, register, logout) and role-based dashboard
+ * rendering for all user types (admin, teacher, student, parent).
+ *
+ * Also provides admin-facing JSON API endpoints for managing users, subjects,
+ * teacher-subject assignments, reports, tasks, and points.
+ */
 class AuthController extends Controller
 {
-    public function prosesLogin(Request $request)
+    //  AUTHENTICATION
+
+    /**
+     * Authenticate the user with email and password.
+     *
+     * On success the session is regenerated and the user is redirected to the
+     * dashboard. On failure the user is sent back with an error flash message.
+     *
+     * @param  Request  $request  Must contain 'email' and 'password'.
+     * @return RedirectResponse
+     */
+    public function prosesLogin(Request $request): RedirectResponse
     {
         $credentials = $request->only('email', 'password');
 
@@ -31,18 +51,36 @@ class AuthController extends Controller
 
         return back()->with('error', 'Email atau Password Salah');
     }
-    
-    public function login()
+
+    /**
+     * Show the login form.
+     *
+     * @return View
+     */
+    public function login(): View
     {
         return view('auth.login');
     }
 
-
-    public function showRegister()
+    /**
+     * Show the registration form.
+     *
+     * @return View
+     */
+    public function showRegister(): View
     {
         return view('auth.register');
     }
-    public function dashboard()
+
+    /**
+     * Route the authenticated user to the correct role-based dashboard.
+     *
+     * Uses a PHP 8.1+ match expression on the user's role to delegate to
+     * a private dashboard builder. Returns 403 for unknown roles.
+     *
+     * @return View|RedirectResponse
+     */
+    public function dashboard(): View|RedirectResponse
     {
         $user = Auth::user();
 
@@ -55,9 +93,23 @@ class AuthController extends Controller
         };
     }
 
-    // DASHBOARDS
+    //  ROLE-BASED DASHBOARDS (private)
 
-    private function adminDashboard()
+    /**
+     * Build the admin dashboard view with aggregate statistics.
+     *
+     * Queries:
+     * - Total students & teachers from the users table.
+     * - Aggregate point sums (overall and today).
+     * - Task count across the entire system.
+     * - Class count from the legacy `classes` table.
+     * - New students/teachers registered this calendar month.
+     * - The 6 most recent point transactions with student, teacher, and subject
+     *   details eagerly loaded to avoid N+1 queries.
+     *
+     * @return View  The `dashboard.admin` Blade template.
+     */
+    private function adminDashboard(): View
     {
         return view('dashboard.admin', [
             'totalStudents'    => User::where('role', 'student')->count(),
@@ -94,16 +146,28 @@ class AuthController extends Controller
         ]);
     }
 
-    private function teacherDashboard()
+    /**
+     * Build the teacher dashboard view with task and submission statistics.
+     *
+     * Retrieves the authenticated user's teacher profile, then gathers:
+     * - Total tasks created under the teacher's subject assignments.
+     * - Count of submissions pending grading (status: submitted or correcting).
+     * - Count of fully graded submissions.
+     * - Total points awarded by this teacher today.
+     * - The 6 most recent submission activities with student and subject details.
+     *
+     * If the teacher profile is missing (data inconsistency), the user is
+     * force-logged out and redirected with an error message.
+     *
+     * @return View|RedirectResponse
+     */
+    private function teacherDashboard(): View|RedirectResponse
     {
         $teacher = Auth::user()->teacher;
 
         if (!$teacher) {
             $this->forceLogout();
-            return redirect()->back()->with('error', 'Terjadi kesalahan.'); 
-            return redirect('dashboard')->withErrors([
-                'email' => 'Teacher Profile Not Found'
-            ]);
+            return redirect()->route('login')->with('error', 'Teacher profile not found. Please contact an administrator.');
         }
 
         $tsIds   = TeacherSubject::where('teacher_id', $teacher->id)->pluck('id');
@@ -144,19 +208,30 @@ class AuthController extends Controller
         ));
     }
 
-    private function studentDashboard()
+    /**
+     * Build the student dashboard view with task and point summaries.
+     *
+     * Retrieves the authenticated user's student profile, then computes:
+     * - Counts of pending (taken), submitted, and graded submissions.
+     * - Total accumulated points.
+     * - Up to 6 upcoming tasks (not past due) for the student's class, each
+     *   annotated with the student's current submission status.
+     * - The 5 most recent point transactions.
+     *
+     * If the student profile is missing, the user is force-logged out.
+     *
+     * @return View|RedirectResponse
+     */
+    private function studentDashboard(): View|RedirectResponse
     {
         $student = Auth::user()->student;
 
         if (!$student) {
             $this->forceLogout();
-            return redirect()->back()->with('error', 'Terjadi kesalahan.'); 
-            return redirect('dashboard')->withErrors([
-                'email' => 'Student Profile Not Found'
-            ]);
+            return redirect()->route('login')->with('error', 'Student profile not found. Please contact an administrator.');
         }
 
-        // Stat cards 
+        // Stat cards
         $pending   = TaskSubmission::where('student_id', $student->id)
                         ->where('status', 'taken')->count();
         $submitted = TaskSubmission::where('student_id', $student->id)
@@ -165,7 +240,7 @@ class AuthController extends Controller
                         ->where('status', 'graded')->count();
         $totalPts  = Point::where('student_id', $student->id)->sum('point');
 
-        //Upcoming tasks for student's class
+        // Upcoming tasks for student's class
         $upcoming = Task::with(['teacherSubject.subject'])
             ->whereHas('teacherSubject', fn($q) =>
                 $q->where('class_id', $student->class_id)
@@ -218,7 +293,15 @@ class AuthController extends Controller
         ]);
     }
 
-    private function parentDashboard()
+    /**
+     * Build the parent dashboard view showing child's point history.
+     *
+     * Retrieves the first child linked to the authenticated parent profile
+     * and shows their total/monthly points plus recent point transaction history.
+     *
+     * @return View
+     */
+    private function parentDashboard(): View
     {
         $parent = Auth::user()->parent;
         $child  = $parent?->students()->first();
@@ -234,7 +317,22 @@ class AuthController extends Controller
                                     ->get(),
         ]);
     }
-    public function register(Request $request)
+
+    //  REGISTRATION
+
+    /**
+     * Handle new user registration.
+     *
+     * Validates the incoming request, creates a User record, then automatically
+     * provisions the corresponding role-specific profile (Teacher, Student, or
+     * Parents model). The new user is logged in immediately and redirected to
+     * the dashboard.
+     *
+     * @param  Request  $request  Must contain name, username, email, password,
+     *                            password_confirmation, and role.
+     * @return RedirectResponse
+     */
+    public function register(Request $request): RedirectResponse
     {
         $validator = Validator::make($request->all(), [
             'name'     => 'required|string|max:225',
@@ -266,23 +364,48 @@ class AuthController extends Controller
         Auth::login($user);
         return redirect('/dashboard')->with('success', 'Akun berhasil dibuat.');
     }
-    public function logout(Request $request)
+
+    //  LOGOUT
+
+    /**
+     * Log the current user out, invalidate the session, and regenerate the
+     * CSRF token before redirecting to the login page.
+     *
+     * @param  Request  $request
+     * @return RedirectResponse
+     */
+    public function logout(Request $request): RedirectResponse
     {
         Auth::logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();
         return redirect()->route('login');
     }
-    function forceLogout()
+
+    /**
+     * Force-logout the current user without a redirect.
+     *
+     * Used internally when a data-integrity issue is detected (e.g. a teacher
+     * user exists but has no corresponding Teacher profile row).
+     *
+     * @return void
+     */
+    private function forceLogout(): void
     {
-        Auth::Logout();
+        Auth::logout();
         request()->session()->invalidate();
         request()->session()->regenerateToken();
     }
 
-    // USERS (Admin API)
+    //  ADMIN API — USERS
 
-    public function getUsers(Request $request)
+    /**
+     * List all users, optionally filtered by search term and/or role.
+     *
+     * @param  Request  $request  Optional query params: ?search=&role=
+     * @return JsonResponse       JSON array of user records.
+     */
+    public function getUsers(Request $request): JsonResponse
     {
         $query = User::query();
 
@@ -302,7 +425,13 @@ class AuthController extends Controller
         );
     }
 
-    public function storeUser(Request $request)
+    /**
+     * Create a new user and provision a role-specific profile record.
+     *
+     * @param  Request  $request  Must contain name, email, role, password.
+     * @return JsonResponse       The created User (HTTP 201).
+     */
+    public function storeUser(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'name'     => 'required|string|max:100',
@@ -330,7 +459,14 @@ class AuthController extends Controller
         return response()->json($user, 201);
     }
 
-    public function updateUser(Request $request, User $user)
+    /**
+     * Update an existing user's name, email, and role.
+     *
+     * @param  Request  $request  Must contain name, email, role.
+     * @param  User     $user     Route-model-bound user instance.
+     * @return JsonResponse       The updated User.
+     */
+    public function updateUser(Request $request, User $user): JsonResponse
     {
         $validated = $request->validate([
             'name'  => 'required|string|max:100',
@@ -342,7 +478,15 @@ class AuthController extends Controller
         return response()->json($user);
     }
 
-    public function destroyUser(User $user)
+    /**
+     * Delete a user account.
+     *
+     * Prevents self-deletion to avoid locking the admin out.
+     *
+     * @param  User  $user  Route-model-bound user instance.
+     * @return JsonResponse
+     */
+    public function destroyUser(User $user): JsonResponse
     {
         if ($user->id === Auth::id()) {
             return response()->json(['message' => 'Cannot delete your own account.'], 403);
@@ -352,14 +496,25 @@ class AuthController extends Controller
         return response()->json(['message' => 'User deleted.']);
     }
 
-    // SUBJECTS (Admin API)
+    //  ADMIN API — SUBJECTS
 
-    public function getSubjects()
+    /**
+     * List all subjects ordered by most recently created.
+     *
+     * @return JsonResponse  JSON array of Subject records.
+     */
+    public function getSubjects(): JsonResponse
     {
         return response()->json(Subject::latest()->get());
     }
 
-    public function storeSubject(Request $request)
+    /**
+     * Create a new subject.
+     *
+     * @param  Request  $request  Must contain a unique 'name'.
+     * @return JsonResponse       The created Subject (HTTP 201).
+     */
+    public function storeSubject(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255|unique:subjects,name',
@@ -368,7 +523,14 @@ class AuthController extends Controller
         return response()->json(Subject::create($validated), 201);
     }
 
-    public function updateSubject(Request $request, Subject $subject)
+    /**
+     * Update a subject's name.
+     *
+     * @param  Request  $request  Must contain a unique 'name'.
+     * @param  Subject  $subject  Route-model-bound subject instance.
+     * @return JsonResponse       The updated Subject.
+     */
+    public function updateSubject(Request $request, Subject $subject): JsonResponse
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255|unique:subjects,name,'.$subject->id,
@@ -378,7 +540,16 @@ class AuthController extends Controller
         return response()->json($subject);
     }
 
-    public function destroySubject(Subject $subject)
+    /**
+     * Delete a subject.
+     *
+     * Rejects deletion if the subject is currently assigned to any teacher
+     * (via teacher_subjects table) to preserve referential integrity.
+     *
+     * @param  Subject  $subject  Route-model-bound subject instance.
+     * @return JsonResponse
+     */
+    public function destroySubject(Subject $subject): JsonResponse
     {
         if ($subject->teacherSubjects()->count() > 0) {
             return response()->json([
@@ -390,9 +561,14 @@ class AuthController extends Controller
         return response()->json(['message' => 'Subject deleted.']);
     }
 
-    // TEACHER SUBJECTS (Admin API)
+    //  ADMIN API — TEACHER-SUBJECT ASSIGNMENTS
 
-    public function getTeacherSubjects()
+    /**
+     * List all teacher-subject-class assignments with related names.
+     *
+     * @return JsonResponse  JSON array with teacher, subject, and class names.
+     */
+    public function getTeacherSubjects(): JsonResponse
     {
         return response()->json(
             TeacherSubject::with(['teacher.user', 'subject', 'class'])
@@ -409,16 +585,24 @@ class AuthController extends Controller
         );
     }
 
-    public function getTeacherSubjectFormData()
+    /**
+     * Retrieve form data needed to create/edit a teacher-subject assignment.
+     *
+     * Returns all existing assignments plus the raw lists of teachers,
+     * subjects, and classes for dropdown population.
+     *
+     * @return JsonResponse
+     */
+    public function getTeacherSubjectFormData(): JsonResponse
     {
         return response()->json([
             TeacherSubject::with(['teacher.user', 'subject', 'class'])
             ->get()
             ->map(fn($ts) => [
                 'id'         => $ts->id,
-                'teacher_id' => $ts->teacher_id,   // ← needed for edit
-                'subject_id' => $ts->subject_id,   // ← needed for edit
-                'class_id'   => $ts->class_id,     // ← needed for edit
+                'teacher_id' => $ts->teacher_id,
+                'subject_id' => $ts->subject_id,
+                'class_id'   => $ts->class_id,
                 'teacher'    => $ts->teacher->user->name ?? '—',
                 'subject'    => $ts->subject->name       ?? '—',
                 'class'      => $ts->class->name         ?? '—',
@@ -426,7 +610,15 @@ class AuthController extends Controller
         ]);
     }
 
-    public function storeTeacherSubject(Request $request)
+    /**
+     * Create a new teacher-subject-class assignment.
+     *
+     * Prevents duplicate assignments (same teacher + subject + class).
+     *
+     * @param  Request  $request  Must contain teacher_id, subject_id, class_id.
+     * @return JsonResponse       The created TeacherSubject (HTTP 201) or 422 if duplicate.
+     */
+    public function storeTeacherSubject(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'teacher_id' => 'required|exists:teachers,id',
@@ -441,7 +633,14 @@ class AuthController extends Controller
         return response()->json(TeacherSubject::create($validated), 201);
     }
 
-    public function updateTeacherSubject(Request $request, TeacherSubject $ts)
+    /**
+     * Update an existing teacher-subject-class assignment.
+     *
+     * @param  Request         $request  Must contain teacher_id, subject_id, class_id.
+     * @param  TeacherSubject  $ts       Route-model-bound assignment instance.
+     * @return JsonResponse
+     */
+    public function updateTeacherSubject(Request $request, TeacherSubject $ts): JsonResponse
     {
         $validated = $request->validate([
             'teacher_id' => 'required|exists:teachers,id',
@@ -457,7 +656,16 @@ class AuthController extends Controller
         return response()->json($ts);
     }
 
-    public function destroyTeacherSubject(TeacherSubject $ts)
+    /**
+     * Delete a teacher-subject assignment.
+     *
+     * Rejects deletion if the assignment has tasks or points linked to it
+     * to prevent orphaned data.
+     *
+     * @param  TeacherSubject  $ts  Route-model-bound assignment instance.
+     * @return JsonResponse
+     */
+    public function destroyTeacherSubject(TeacherSubject $ts): JsonResponse
     {
         if ($ts->tasks()->count() > 0 || $ts->points()->count() > 0) {
             return response()->json([
@@ -469,9 +677,19 @@ class AuthController extends Controller
         return response()->json(['message' => 'Deleted.']);
     }
 
-    // REPORTS (Admin API)
+    //  ADMIN API — REPORTS
 
-    public function getReports(Request $request)
+    /**
+     * List all point transactions with optional search and type filter.
+     *
+     * Supports searching by student or teacher name and filtering by point
+     * type (positive / negative). Each record includes the student name,
+     * awarding teacher, subject, and point details.
+     *
+     * @param  Request  $request  Optional query params: ?search=&type=positive|negative
+     * @return JsonResponse
+     */
+    public function getReports(Request $request): JsonResponse
     {
         $query = Point::with([
             'student.user',
@@ -506,7 +724,12 @@ class AuthController extends Controller
         );
     }
 
-    public function getReportStats()
+    /**
+     * Return aggregate report statistics for all points in the system.
+     *
+     * @return JsonResponse  Contains total, awarded, deducted, and transaction count.
+     */
+    public function getReportStats(): JsonResponse
     {
         return response()->json([
             'total'        => Point::sum('point'),
@@ -516,9 +739,14 @@ class AuthController extends Controller
         ]);
     }
 
-    // TASKS (Admin API)
+    //  ADMIN API — TASKS
 
-    public function getTasks()
+    /**
+     * List all tasks system-wide with teacher, subject, and submission count.
+     *
+     * @return JsonResponse
+     */
+    public function getTasks(): JsonResponse
     {
         return response()->json(
             Task::with(['teacherSubject.teacher.user', 'teacherSubject.subject'])
@@ -528,7 +756,13 @@ class AuthController extends Controller
         );
     }
 
-    public function storeTask(Request $request)
+    /**
+     * Create a new task (admin override — no teacher ownership check).
+     *
+     * @param  Request  $request  Must contain title, teacher_subject_id.
+     * @return JsonResponse       The created Task (HTTP 201).
+     */
+    public function storeTask(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'title'              => 'required|string|max:150',
@@ -541,7 +775,14 @@ class AuthController extends Controller
         return response()->json(Task::create($validated), 201);
     }
 
-    public function updateTask(Request $request, Task $task)
+    /**
+     * Update a task (admin override — no teacher ownership check).
+     *
+     * @param  Request  $request  May contain title, description, due_date, max_grade.
+     * @param  Task     $task     Route-model-bound task instance.
+     * @return JsonResponse       The updated Task.
+     */
+    public function updateTask(Request $request, Task $task): JsonResponse
     {
         $validated = $request->validate([
             'title'             => 'required|string|max:150',
@@ -554,14 +795,26 @@ class AuthController extends Controller
         return response()->json($task);
     }
 
-    public function destroyTask(Task $task)
+    /**
+     * Delete a task (admin override).
+     *
+     * @param  Task  $task  Route-model-bound task instance.
+     * @return JsonResponse
+     */
+    public function destroyTask(Task $task): JsonResponse
     {
         $task->delete();
         return response()->json(['message' => 'Task deleted.']);
     }
-    // POINTS (Admin — manual award)
 
-    public function getStudentsForPoints()
+    //  ADMIN API — POINTS (manual award)
+
+    /**
+     * List all students with their names and class for the point-award form.
+     *
+     * @return JsonResponse  JSON array of student id, name, and class name.
+     */
+    public function getStudentsForPoints(): JsonResponse
     {
         return response()->json(
             Student::with(['user', 'class'])
@@ -574,7 +827,16 @@ class AuthController extends Controller
         );
     }
 
-    public function storePoint(Request $request)
+    /**
+     * Manually award or deduct points for a student.
+     *
+     * If a `task_submission_id` is provided, the corresponding submission is
+     * also marked as graded with the absolute point value as the grade.
+     *
+     * @param  Request  $request  Must contain student_id, teacher_subject_id, point.
+     * @return JsonResponse       The created Point (HTTP 201).
+     */
+    public function storePoint(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'student_id'         => 'required|exists:students,id',
@@ -582,7 +844,7 @@ class AuthController extends Controller
             'point'              => 'required|integer|not_in:0',
             'description'        => 'nullable|string|max:255',
             'point_date'         => 'nullable|date',
-            'task_submission_id' => 'nullable|exists:task_submissions,id', // ← add
+            'task_submission_id' => 'nullable|exists:task_submissions,id',
         ]);
 
         $point = Point::create([
@@ -593,7 +855,7 @@ class AuthController extends Controller
             'point_date'         => $validated['point_date'] ?? today()->toDateString(),
         ]);
 
-        // ← add: if came from a submission, mark it graded
+        // If the point came from grading a submission, mark the submission as graded
         if (!empty($validated['task_submission_id'])) {
             TaskSubmission::where('id', $validated['task_submission_id'])
                 ->update([
@@ -604,7 +866,17 @@ class AuthController extends Controller
 
         return response()->json($point, 201);
     }
-    public function getTaskSubmissions(Task $task)
+
+    /**
+     * List all submissions for a specific task (admin view).
+     *
+     * Each submission includes student details, status, grade, and the task's
+     * teacher_subject_id for downstream point-award integration.
+     *
+     * @param  Task  $task  Route-model-bound task instance.
+     * @return JsonResponse
+     */
+    public function getTaskSubmissions(Task $task): JsonResponse
     {
         return response()->json(
             $task->submissions()
@@ -612,8 +884,8 @@ class AuthController extends Controller
                 ->get()
                 ->map(fn($s) => [
                     'id'                 => $s->id,
-                    'student_id'         => $s->student_id,                // ← add
-                    'teacher_subject_id' => $task->teacher_subject_id,     // ← add
+                    'student_id'         => $s->student_id,
+                    'teacher_subject_id' => $task->teacher_subject_id,
                     'student_name'       => $s->student->user->name  ?? '—',
                     'class'              => $s->student->class->name ?? '—',
                     'status'             => $s->status,

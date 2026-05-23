@@ -181,6 +181,78 @@ class ClassController extends Controller
      * GET /teacher/classes
      * List classes assigned to the authenticated teacher.
      */
+    public function teacherStore(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'name'        => ['required', 'string', 'max:100'],
+            'subject_id'  => ['required', 'exists:subjects,id'],
+            'description' => ['nullable', 'string', 'max:500'],
+            'join_code'   => ['nullable', 'string', 'max:20'],
+        ]);
+
+        $data['code'] = strtoupper($data['join_code'] ?? $this->generateCode());
+        unset($data['join_code']);
+
+        $data['teacher_id'] = Auth::id();
+
+        $class = SchoolClass::create($data);
+        $class->load(['subject:id,name']);
+
+        return response()->json([
+            'message' => 'Class created successfully.',
+            'class'   => [
+                'id'            => $class->id,
+                'name'          => $class->name,
+                'code'          => $class->code,
+                'description'   => $class->description,
+                'subject_name'  => $class->subject?->name,
+                'student_count' => 0,
+                'total_tasks'   => 0,
+                'active_tasks'  => 0,
+                'created_at'    => $class->created_at,
+            ],
+        ], 201);
+    }
+
+    public function teacherUpdate(Request $request, int $id): JsonResponse
+    {
+        $class = SchoolClass::where('id', $id)->where('teacher_id', Auth::id())->firstOrFail();
+
+        $data = $request->validate([
+            'name'        => ['required', 'string', 'max:100'],
+            'subject_id'  => ['nullable', 'exists:subjects,id'],
+            'description' => ['nullable', 'string', 'max:500'],
+            'join_code'   => ['nullable', 'string', 'max:20'],
+        ]);
+
+        if (isset($data['join_code'])) {
+            $data['code'] = strtoupper($data['join_code']);
+            unset($data['join_code']);
+        }
+        
+        if (empty($data['subject_id'])) {
+            unset($data['subject_id']);
+        }
+
+        $class->update($data);
+
+        return response()->json([
+            'message' => 'Class updated successfully.',
+        ]);
+    }
+
+    public function teacherDestroy(int $id): JsonResponse
+    {
+        $class = SchoolClass::where('id', $id)->where('teacher_id', Auth::id())->firstOrFail();
+        
+        if ($class->students()->count() > 0) {
+            return response()->json(['message' => 'Cannot delete class with enrolled students.'], 422);
+        }
+
+        $class->delete();
+        return response()->json(['message' => 'Class deleted successfully.']);
+    }
+
     public function teacherIndex(): JsonResponse
     {
         $classes = SchoolClass::with(['subject:id,name'])

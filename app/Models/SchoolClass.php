@@ -32,9 +32,16 @@ class SchoolClass extends Model
     }
 
     /** Tasks assigned to this class */
-    public function tasks(): HasMany
+    public function tasks(): \Illuminate\Database\Eloquent\Relations\HasManyThrough
     {
-        return $this->hasMany(Task::class, 'class_id');
+        return $this->hasManyThrough(
+            Task::class,
+            TeacherSubject::class,
+            'class_id', // Foreign key on teacher_subjects table
+            'teacher_subject_id', // Foreign key on tasks table
+            'id', // Local key on school_classes table
+            'id' // Local key on teacher_subjects table
+        );
     }
 
     /** Students enrolled in this class (via pivot) */

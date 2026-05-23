@@ -587,12 +587,17 @@
       </div>
       <div class="grid-2">
         <div>
-          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">Subject</label>
-          <select id="clsSubject" class="form-input"><option value="">-- Select --</option></select>
+          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">Main Subject</label>
+          <select id="clsSubject" class="form-input">
+            <option value="">-- Select --</option>
+          </select>
         </div>
         <div>
           <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">Teacher</label>
-          <select id="clsTeacher" class="form-input"><option value="">-- Select --</option></select>
+          <!-- Kept the onchange function from earlier if you are still using the "Add New" feature -->
+          <select id="clsTeacher" onchange="onClassTeacherSelectChange()" class="form-input">
+            <option value="">-- Select --</option>
+          </select>
         </div>
       </div>
       <div>
@@ -666,7 +671,7 @@
         <div id="cpInitial" style="width:52px;height:52px;border-radius:14px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;color:#6366f1;flex-shrink:0;box-shadow:0 4px 14px rgba(0,0,0,0.15)">A</div>
         <div style="min-width:0">
           <h2 id="cpName" style="font-size:17px;font-weight:800;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Class Name</h2>
-          <p id="cpSubject" style="font-size:12px;color:rgba(255,255,255,0.75);margin-top:1px">Subject</p>
+          <p id="cpSubject" style="font-size:12px;color:rgba(255,255,255,0.75);margin-top:1px">Main Subject</p>
         </div>
         <button onclick="closeClassPanel()" style="position:absolute;top:12px;right:14px;width:28px;height:28px;border-radius:8px;background:rgba(255,255,255,0.2);border:none;cursor:pointer;color:#fff;font-size:18px;line-height:1;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)">×</button>
       </div>
@@ -1987,7 +1992,7 @@ async function openAddTeacherSubject() {
   document.getElementById('mTSTitle').textContent='Assign Teacher';
   document.getElementById('tsSaveBtn').textContent='Assign';
   await loadTeacherSubjectFormData();
-  ['tsTeacher','tsSubj','tsClass'].forEach(id=>document.getElementById(id).value='');
+  ['tsTeacher','tsSubj','tsClass', 'clsTeacher'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('tsNewWrap').style.display='none';
   document.getElementById('tsNewName').value='';
   openModal('mTS');

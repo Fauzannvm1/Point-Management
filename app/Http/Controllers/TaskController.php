@@ -7,20 +7,33 @@ use App\Models\TaskSubmission;
 use App\Models\TeacherSubject;
 use App\Models\Point;
 use App\Models\Subject;
-use App\Models\Classes;   // adjust if named differently, e.g. SchoolClass
+use App\Models\Classes;   
 use App\Models\Student;
 use App\Models\User;
 use App\Models\Teacher;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Contracts\View\View;
+use Illuminate\Http\RedirectResponse;
 
+/**
+ * Handles core application logic for Tasks, Submissions, Points, and Teacher Subjects.
+ * 
+ * Provides API endpoints for Teachers to manage tasks/grades, Students to view/submit tasks,
+ * and Admins to oversee tasks, subjects, users, points, and reports.
+ */
 class TaskController extends Controller
 {
-    //  PRIVATE HELPERS
+    // Private Helpers
 
-    private function teacher()
+    /**
+     * Get the authenticated teacher profile.
+     *
+     * @return \App\Models\Teacher
+     */
+    private function teacher(): Teacher
     {
         $teacher = Auth::user()->teacher;
         if (!$teacher) {
@@ -30,7 +43,12 @@ class TaskController extends Controller
         return $teacher;
     }
 
-    private function student()
+    /**
+     * Get the authenticated student profile.
+     *
+     * @return \App\Models\Student
+     */
+    private function student(): Student
     {
         $student = Auth::user()->student;
         if (!$student) {
@@ -40,19 +58,35 @@ class TaskController extends Controller
         return $student;
     }
 
-    private function forceLogout()
+    /**
+     * Force logout the user.
+     *
+     * @return void
+     */
+    private function forceLogout(): void
     {
         Auth::logout();
         request()->session()->invalidate();
         request()->session()->regenerateToken();
     }
 
+    /**
+     * Get IDs of all subjects assigned to the authenticated teacher.
+     *
+     * @return \Illuminate\Support\Collection
+     */
     private function teacherSubjectIds()
     {
         return TeacherSubject::where('teacher_id', $this->teacher()->id)->pluck('id');
     }
 
-    private function authorizeTeacherSubject($teacherSubjectId)
+    /**
+     * Authorize that the authenticated teacher owns the given subject assignment.
+     *
+     * @param int $teacherSubjectId
+     * @return void
+     */
+    private function authorizeTeacherSubject(int $teacherSubjectId): void
     {
         $owns = TeacherSubject::where('id', $teacherSubjectId)
                               ->where('teacher_id', $this->teacher()->id)
@@ -60,21 +94,40 @@ class TaskController extends Controller
         if (!$owns) abort(403, 'Unauthorized subject.');
     }
 
-    private function authorizeTask(Task $task)
+    /**
+     * Authorize that the authenticated teacher owns the given task.
+     *
+     * @param Task $task
+     * @return void
+     */
+    private function authorizeTask(Task $task): void
     {
         if ($task->teacherSubject->teacher_id !== $this->teacher()->id) {
             abort(403, 'Unauthorized task.');
         }
     }
 
-    private function authorizeSubmissionAsTeacher(TaskSubmission $submission)
+    /**
+     * Authorize that the authenticated teacher has access to the given submission.
+     *
+     * @param TaskSubmission $submission
+     * @return void
+     */
+    private function authorizeSubmissionAsTeacher(TaskSubmission $submission): void
     {
         if ($submission->task->teacherSubject->teacher_id !== $this->teacher()->id) {
             abort(403, 'Unauthorized.');
         }
     }
 
-    private function handleTaskFiles(Task $task, Request $request)
+    /**
+     * Handle file uploads for a task.
+     *
+     * @param Task $task
+     * @param Request $request
+     * @return void
+     */
+    private function handleTaskFiles(Task $task, Request $request): void
     {
         if (!$request->hasFile('files')) return;
 
@@ -96,9 +149,14 @@ class TaskController extends Controller
         }
     }
 
-    //  MAIN DASHBOARD   GET /dashboard
+    // Main Dashboard GET /dashboard
 
-    public function dashboard()
+    /**
+     * Route the authenticated user to the correct role-based dashboard.
+     *
+     * @return View|RedirectResponse
+     */
+    public function dashboard(): View|RedirectResponse
     {
         $user = Auth::user();
 
@@ -111,9 +169,12 @@ class TaskController extends Controller
         };
     }
 
-    //  TEACHER DASHBOARD
-
-    private function teacherDashboard()
+    /**
+     * Build the teacher dashboard view.
+     *
+     * @return View
+     */
+    private function teacherDashboard(): View
     {
         $tsIds = $this->teacherSubjectIds();
 
@@ -141,14 +202,17 @@ class TaskController extends Controller
                 'grade'   => $s->grade,
             ]);
 
-        return view('teacher.dashboard', compact(
+        return view('dashboard.teacher', compact(
             'totalTasks', 'pendingGrading', 'totalGraded', 'pointsGiven', 'recentActivity'
         ));
     }
 
-    //  STUDENT DASHBOARD VIEW
-
-    private function studentDashboardView()
+    /**
+     * Build the student dashboard view.
+     *
+     * @return View
+     */
+    private function studentDashboardView(): View
     {
         $student = $this->student();
 
@@ -179,14 +243,17 @@ class TaskController extends Controller
                 ];
             });
 
-        return view('student.dashboard', compact(
+        return view('dashboard.student', compact(
             'totalTasks', 'pendingTasks', 'submittedTasks', 'totalPoints', 'recentTasks'
         ));
     }
 
-    //  ADMIN DASHBOARD
-
-    private function adminDashboard()
+    /**
+     * Build the admin dashboard view.
+     *
+     * @return View
+     */
+    private function adminDashboard(): View
     {
         $totalStudents    = User::where('role', 'student')->count();
         $totalTeachers    = User::where('role', 'teacher')->count();
@@ -214,15 +281,21 @@ class TaskController extends Controller
                 'subject' => $p->teacherSubject->subject->name     ?? '--',
             ]);
 
-        return view('admin.dashboard', compact(
+        return view('dashboard.admin', compact(
             'totalStudents', 'totalTeachers', 'totalTasks', 'totalPoints',
             'pointsToday', 'newStudentsMonth', 'newTeachersMonth', 'recentActivity'
         ));
     }
 
-    //  SHARED   GET /task/{task}/detail
+    // Shared GET /task/{task}/detail
 
-    public function detail($id)
+    /**
+     * Get detailed information for a specific task.
+     *
+     * @param int $id
+     * @return JsonResponse
+     */
+    public function detail(int $id): JsonResponse
     {
         $task = Task::with([
             'teacherSubject.subject',
@@ -265,10 +338,16 @@ class TaskController extends Controller
         ]);
     }
 
-    //  TEACHER – Tasks
+    // Teacher – Tasks
 
-    /** GET /teacher/tasks */
-    public function index()
+    /** 
+     * GET /teacher/tasks
+     * 
+     * List all tasks assigned by the authenticated teacher.
+     * 
+     * @return JsonResponse
+     */
+    public function index(): JsonResponse
     {
         $tsIds = $this->teacherSubjectIds();
 
@@ -285,8 +364,14 @@ class TaskController extends Controller
         return response()->json($tasks);
     }
 
-    /** GET /teacher/tasks/create */
-    public function create()
+    /** 
+     * GET /teacher/tasks/create 
+     * 
+     * Get form data required for creating a new task.
+     * 
+     * @return JsonResponse
+     */
+    public function create(): JsonResponse
     {
         $tsIds = $this->teacherSubjectIds();
 
@@ -302,8 +387,15 @@ class TaskController extends Controller
         return response()->json(compact('teacherSubjects'));
     }
 
-    /** POST /teacher/tasks */
-    public function store(Request $request)
+    /** 
+     * POST /teacher/tasks 
+     * 
+     * Store a new task.
+     * 
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'teacher_subject_id' => 'required|exists:teacher_subjects,id',
@@ -329,8 +421,16 @@ class TaskController extends Controller
         return response()->json($task->load(['teacherSubject.subject', 'teacherSubject.class']), 201);
     }
 
-    /** POST /teacher/tasks/{task}  (_method=PUT via FormData) */
-    public function update(Request $request, Task $task)
+    /** 
+     * POST /teacher/tasks/{task}  (_method=PUT via FormData) 
+     * 
+     * Update an existing task.
+     * 
+     * @param Request $request
+     * @param Task $task
+     * @return JsonResponse
+     */
+    public function update(Request $request, Task $task): JsonResponse
     {
         $this->authorizeTask($task);
 
@@ -360,8 +460,15 @@ class TaskController extends Controller
         return response()->json($task->load(['teacherSubject.subject', 'teacherSubject.class']));
     }
 
-    /** DELETE /teacher/tasks/{task} */
-    public function destroy(Task $task)
+    /** 
+     * DELETE /teacher/tasks/{task} 
+     * 
+     * Delete a task and its associated files.
+     * 
+     * @param Task $task
+     * @return JsonResponse
+     */
+    public function destroy(Task $task): JsonResponse
     {
         $this->authorizeTask($task);
 
@@ -373,10 +480,18 @@ class TaskController extends Controller
         return response()->json(['message' => 'Task deleted.']);
     }
 
-    //  TEACHER – Submissions
+    // Teacher – Submissions
 
-    /** GET /teacher/submissions */
-    public function submissionIndex(Request $request, Task $task = null)
+    /** 
+     * GET /teacher/submissions 
+     * 
+     * List all submissions for tasks assigned by the teacher.
+     * 
+     * @param Request $request
+     * @param Task|null $task
+     * @return JsonResponse
+     */
+    public function submissionIndex(Request $request, Task $task = null): JsonResponse
     {
         $tsIds = $this->teacherSubjectIds();
 
@@ -410,8 +525,15 @@ class TaskController extends Controller
         return response()->json($submissions);
     }
 
-    /** POST /teacher/submissions/{submission}/correcting */
-    public function markCorrecting(TaskSubmission $submission)
+    /** 
+     * POST /teacher/submissions/{submission}/correcting 
+     * 
+     * Mark a submission as currently being corrected.
+     * 
+     * @param TaskSubmission $submission
+     * @return JsonResponse
+     */
+    public function markCorrecting(TaskSubmission $submission): JsonResponse
     {
         $this->authorizeSubmissionAsTeacher($submission);
 
@@ -424,8 +546,16 @@ class TaskController extends Controller
         return response()->json(['message' => 'Marked as correcting.']);
     }
 
-    /** POST /teacher/submissions/{submission}/status */
-    public function submissionSetStatus(Request $request, TaskSubmission $submission)
+    /** 
+     * POST /teacher/submissions/{submission}/status 
+     * 
+     * Update the status of a submission.
+     * 
+     * @param Request $request
+     * @param TaskSubmission $submission
+     * @return JsonResponse
+     */
+    public function submissionSetStatus(Request $request, TaskSubmission $submission): JsonResponse
     {
         $this->authorizeSubmissionAsTeacher($submission);
 
@@ -438,8 +568,16 @@ class TaskController extends Controller
         return response()->json(['message' => 'Status updated.']);
     }
 
-    /** POST /teacher/submissions/{submission}/grade */
-    public function grade(Request $request, TaskSubmission $submission)
+    /** 
+     * POST /teacher/submissions/{submission}/grade 
+     * 
+     * Grade a submission.
+     * 
+     * @param Request $request
+     * @param TaskSubmission $submission
+     * @return JsonResponse
+     */
+    public function grade(Request $request, TaskSubmission $submission): JsonResponse
     {
         $this->authorizeSubmissionAsTeacher($submission);
 
@@ -485,10 +623,16 @@ class TaskController extends Controller
         ]);
     }
 
-    //  TEACHER – Subjects
+    // Teacher – Subjects
 
-    /** GET /teacher/subjects */
-    public function subjectIndex()
+    /** 
+     * GET /teacher/subjects 
+     * 
+     * List all subjects assigned to the teacher.
+     * 
+     * @return JsonResponse
+     */
+    public function subjectIndex(): JsonResponse
     {
         $teacher = $this->teacher();
 
@@ -507,8 +651,14 @@ class TaskController extends Controller
         return response()->json($subjects);
     }
 
-    /** GET /teacher/subjects/create */
-    public function subjectCreate()
+    /** 
+     * GET /teacher/subjects/create 
+     * 
+     * Get form data required for assigning a new subject.
+     * 
+     * @return JsonResponse
+     */
+    public function subjectCreate(): JsonResponse
     {
         $subjects = Subject::orderBy('name')->get(['id', 'name']);
         $classes  = Classes::orderBy('name')->get(['id', 'name']);
@@ -516,8 +666,15 @@ class TaskController extends Controller
         return response()->json(compact('subjects', 'classes'));
     }
 
-    /** POST /teacher/subjects */
-    public function subjectStore(Request $request)
+    /** 
+     * POST /teacher/subjects 
+     * 
+     * Assign a subject to the teacher.
+     * 
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function subjectStore(Request $request): JsonResponse
     {
         $request->validate([
             'subject_id' => 'required|integer|exists:subjects,id',
@@ -544,8 +701,15 @@ class TaskController extends Controller
         return response()->json($ts->load(['subject', 'class']), 201);
     }
 
-    /** DELETE /teacher/subjects/{id} */
-    public function subjectDestroy($id)
+    /** 
+     * DELETE /teacher/subjects/{id} 
+     * 
+     * Remove a subject assignment from the teacher.
+     * 
+     * @param int $id
+     * @return JsonResponse
+     */
+    public function subjectDestroy(int $id): JsonResponse
     {
         $teacher = $this->teacher();
 
@@ -557,10 +721,16 @@ class TaskController extends Controller
         return response()->json(['message' => 'Subject removed.']);
     }
 
-    //  TEACHER – Points & Report
+    // Teacher – Points & Report
 
-    /** GET /teacher/points */
-    public function teacherPoints()
+    /** 
+     * GET /teacher/points 
+     * 
+     * List all points awarded by the teacher.
+     * 
+     * @return JsonResponse
+     */
+    public function teacherPoints(): JsonResponse
     {
         $tsIds = $this->teacherSubjectIds();
 
@@ -580,8 +750,14 @@ class TaskController extends Controller
         return response()->json($points);
     }
 
-    /** GET /teacher/points/stats */
-    public function teacherPointStats()
+    /** 
+     * GET /teacher/points/stats 
+     * 
+     * Get aggregate statistics for points awarded by the teacher.
+     * 
+     * @return JsonResponse
+     */
+    public function teacherPointStats(): JsonResponse
     {
         $tsIds    = $this->teacherSubjectIds();
         $total    = Point::whereIn('teacher_subject_id', $tsIds)->sum('point');
@@ -591,8 +767,15 @@ class TaskController extends Controller
         return response()->json(compact('total', 'awarded', 'deducted'));
     }
 
-    /** GET /teacher/report?period=week|month|all&ts_id= */
-    public function report(Request $request)
+    /** 
+     * GET /teacher/report?period=week|month|all&ts_id= 
+     * 
+     * Generate a report for the teacher based on a specific period and subject.
+     * 
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function report(Request $request): JsonResponse
     {
         $teacher = $this->teacher();
 
@@ -650,9 +833,14 @@ class TaskController extends Controller
         return response()->json(compact('summary', 'breakdown', 'points'));
     }
 
-    //  STUDENT – Dashboard JSON   GET /student/dashboard
+    // Student – Dashboard JSON GET /student/dashboard
 
-    public function studentDashboard()
+    /**
+     * Get JSON data for the student dashboard.
+     * 
+     * @return JsonResponse
+     */
+    public function studentDashboard(): JsonResponse
     {
         $student = $this->student();
 
@@ -701,10 +889,17 @@ class TaskController extends Controller
         ]);
     }
 
-    //  STUDENT – Tasks
+    // Student – Tasks
 
-    /** GET /student/tasks */
-    public function studentTasks(Request $request)
+    /** 
+     * GET /student/tasks 
+     * 
+     * List all tasks assigned to the student's class.
+     * 
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function studentTasks(Request $request): JsonResponse
     {
         $student = $this->student();
 
@@ -740,8 +935,14 @@ class TaskController extends Controller
         return response()->json($tasks);
     }
 
-    /** GET /student/my-submissions */
-    public function mySubmissions()
+    /** 
+     * GET /student/my-submissions 
+     * 
+     * List all submissions made by the student.
+     * 
+     * @return JsonResponse
+     */
+    public function mySubmissions(): JsonResponse
     {
         $student = $this->student();
 
@@ -764,8 +965,15 @@ class TaskController extends Controller
         return response()->json($submissions);
     }
 
-    /** POST /student/tasks/{task}/accept */
-    public function studentAccept(Task $task)
+    /** 
+     * POST /student/tasks/{task}/accept 
+     * 
+     * Accept a task (mark as 'taken').
+     * 
+     * @param Task $task
+     * @return JsonResponse
+     */
+    public function studentAccept(Task $task): JsonResponse
     {
         $student = $this->student();
 
@@ -796,8 +1004,16 @@ class TaskController extends Controller
         return response()->json(['message' => 'Task accepted.', 'submission' => $submission], 201);
     }
 
-    /** POST /student/tasks/{task}/submit */
-    public function studentSubmit(Request $request, Task $task)
+    /** 
+     * POST /student/tasks/{task}/submit 
+     * 
+     * Submit a task.
+     * 
+     * @param Request $request
+     * @param Task $task
+     * @return JsonResponse
+     */
+    public function studentSubmit(Request $request, Task $task): JsonResponse
     {
         $request->validate([
             'note'    => 'nullable|string|max:1000',
@@ -830,10 +1046,16 @@ class TaskController extends Controller
         return response()->json(['message' => 'Submitted successfully.']);
     }
 
-    //  STUDENT – Points
+    // Student – Points
 
-    /** GET /student/points */
-    public function studentPoints()
+    /** 
+     * GET /student/points 
+     * 
+     * List all points awarded to the student.
+     * 
+     * @return JsonResponse
+     */
+    public function studentPoints(): JsonResponse
     {
         $student = $this->student();
 
@@ -852,8 +1074,14 @@ class TaskController extends Controller
         return response()->json($points);
     }
 
-    /** GET /student/points/stats */
-    public function studentPointStats()
+    /** 
+     * GET /student/points/stats 
+     * 
+     * Get aggregate statistics for points awarded to the student.
+     * 
+     * @return JsonResponse
+     */
+    public function studentPointStats(): JsonResponse
     {
         $student  = $this->student();
         $net      = Point::where('student_id', $student->id)->sum('point');
@@ -863,8 +1091,15 @@ class TaskController extends Controller
         return response()->json(compact('net', 'earned', 'deducted'));
     }
 
-    /** GET /student/report */
-    public function studentReport(Request $request)
+    /** 
+     * GET /student/report 
+     * 
+     * Generate a report for the student.
+     * 
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function studentReport(Request $request): JsonResponse
     {
         $student = $this->student();
 
@@ -918,7 +1153,7 @@ class TaskController extends Controller
         return response()->json(compact('summary', 'breakdown', 'graded'));
     }
 
-    //  ADMIN – Users   (GET/POST /users, PUT/DELETE /users/{id})
+    // Admin – Users
 
     /** GET /users?search=&role= */
     public function usersIndex(Request $request)
@@ -988,7 +1223,7 @@ class TaskController extends Controller
         return response()->json(['message' => 'User deleted.']);
     }
 
-    //  ADMIN – Subjects   (GET/POST /subjects, PUT/DELETE /subjects/{id})
+    // Admin – Subjects
 
     /** GET /subjects */
     public function adminSubjectsIndex()
@@ -1019,7 +1254,7 @@ class TaskController extends Controller
         return response()->json(['message' => 'Subject deleted.']);
     }
 
-    //  ADMIN – Classes   (GET/POST /admin/classes, PUT/DELETE /admin/classes/{id})
+    // Admin – Classes
 
     /** GET /admin/classes */
     public function classesIndex()
@@ -1072,7 +1307,7 @@ class TaskController extends Controller
         return response()->json(['message' => 'Class deleted.']);
     }
 
-    //  ADMIN – Teacher-Subject Assignments
+    // Admin – Teacher-Subject Assignments
 
     /** GET /admin/teacher-subjects */
     public function adminTeacherSubjectsIndex()
@@ -1150,7 +1385,7 @@ class TaskController extends Controller
         return response()->json(['message' => 'Assignment removed.']);
     }
 
-    //  ADMIN – Tasks   (for admin dashboard task panel)
+    // Admin – Tasks
 
     /** GET /admin/tasks */
     public function adminTasksIndex()
@@ -1225,7 +1460,7 @@ class TaskController extends Controller
         return response()->json($submissions);
     }
 
-    //  ADMIN – Points
+    // Admin – Points
 
     /** POST /admin/points */
     public function adminPointsStore(Request $request)
@@ -1266,7 +1501,7 @@ class TaskController extends Controller
         return response()->json($students);
     }
 
-    //  ADMIN – Reports
+    // Admin – Reports
 
     /** GET /reports?search=&type= */
     public function adminReports(Request $request)
