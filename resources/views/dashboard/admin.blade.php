@@ -37,7 +37,7 @@
       flex-shrink: 0;
       position: fixed;
       left: 0; top: 0;
-      z-index: 40;
+      z-index: 60;
       transition: transform 0.25s ease;
     }
 
@@ -69,7 +69,7 @@
       position: fixed;
       inset: 0;
       background: rgba(0,0,0,0.5);
-      z-index: 39;
+      z-index: 59;
       backdrop-filter: blur(2px);
     }
     .overlay.on { display: block; }
