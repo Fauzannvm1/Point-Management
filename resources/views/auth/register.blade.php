@@ -1,17 +1,102 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
-    <title>Register</title>
+    <title>Register — Point Management</title>
+    <meta name="description" content="Create your Point Management account.">
 
     <!-- Font Icon -->
     <link rel="stylesheet" href="{{ asset ('dist_login/fonts/material-icon/css/material-design-iconic-font.min.css') }}">
 
+    <!-- Bootstrap 5 CDN -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            prefix: 'tw-',
+            corePlugins: { preflight: false },
+            theme: {
+                extend: {
+                    colors: {
+                        cyan: { accent: '#05f2f2', dark: '#04cccc', deeper: '#039e9e' },
+                        light: { page: '#f0f4f8', card: '#ffffff' }
+                    }
+                }
+            }
+        }
+    </script>
+
     <!-- Main css -->
     <link rel="stylesheet" href="{{ asset ('dist_login/css/style.css') }}">
+
+    <style>
+        /* Page-specific overrides for register - Light Mode */
+        body {
+            background-color: #f0f4f8;
+            background-image: radial-gradient(rgba(5, 242, 242, 0.04) 1px, transparent 1px);
+            background-size: 32px 32px;
+        }
+
+        .signup-content {
+            gap: 0;
+        }
+
+        .signup-image figure {
+            position: relative;
+            overflow: hidden;
+            border-radius: 14px;
+        }
+
+        .signup-image figure::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(5, 242, 242, 0.05) 0%, transparent 60%);
+            pointer-events: none;
+            border-radius: 14px;
+        }
+
+        .form-group {
+            transition: transform 0.2s ease;
+        }
+
+        .form-group:focus-within {
+            transform: translateX(4px);
+        }
+
+        @keyframes glowPulse {
+            0%, 100% { box-shadow: 0 0 0 3px rgba(5, 242, 242, 0.12), 0 0 8px rgba(5, 242, 242, 0.12); }
+            50%      { box-shadow: 0 0 0 4px rgba(5, 242, 242, 0.18), 0 0 12px rgba(5, 242, 242, 0.20); }
+        }
+
+        input[type="text"]:focus,
+        input[type="email"]:focus,
+        input[type="password"]:focus,
+        select:focus {
+            animation: glowPulse 2s ease-in-out infinite;
+        }
+
+        .login-link-area {
+            position: relative;
+        }
+
+        .login-link-area::before {
+            content: '';
+            display: block;
+            width: 60px;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(5, 242, 242, 0.4), transparent);
+            margin: 0 auto 12px;
+        }
+
+        .alert-danger ul {
+            margin-bottom: 0;
+        }
+    </style>
 </head>
 <body>
 
@@ -69,7 +154,7 @@
                             <div class="form-group form-button">
                                 <input type="submit" name="signup" id="signup" class="form-submit" value="Register"/>
                             </div>
-                            <div class="">
+                            <div class="login-link-area">
                                 <p>Sudah punya akun?</p>
                                 <a href="{{ url ('/login') }}">LOG IN</a>
                             </div>
@@ -87,6 +172,7 @@
     <!-- JS -->
     <script src="{{ asset ('dist_login/vendor/jquery/jquery.min.js') }}"></script>
     <script src="{{ asset ('js/main.js') }}"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         document.getElementById('togglePassword').addEventListener('click', function () {
             let passwordInput = document.getElementById('password');
