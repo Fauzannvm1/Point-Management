@@ -8,7 +8,7 @@
     <meta name="description" content="Sign in to your Point Management account.">
 
     <!-- Font Icon -->
-    <link rel="stylesheet" href="{{ asset ('dist_login/fonts/material-icon/css/material-design-iconic-font.min.css') }}">
+    <link rel="stylesheet" href="{{ asset ('public/dist_login/fonts/material-icon/css/material-design-iconic-font.min.css') }}">
 
     <!-- Bootstrap 5 CDN -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -512,7 +512,7 @@
             <div class="container">
                 <div class="signin-content">
                     <div class="signin-image">
-                        <figure><img src="{{ asset ('dist_login/images/signin-image.jpg') }}" alt="sing up image"></figure>
+                        <figure><img src="{{ asset ('public/dist_login/images/signin-image.jpg') }}" alt="sing up image"></figure>
                     </div>
 
                     <div class="signin-form">
@@ -552,8 +552,8 @@
     </div>
 
     <!-- JS -->
-    <script src="{{ asset ('dist_login/vendor/jquery/jquery.min.js') }}"></script>
-    <script src="{{ asset ('dist_login/js/main.js') }}"></script>
+    <script src="{{ asset ('public/dist_login/vendor/jquery/jquery.min.js') }}"></script>
+    <script src="{{ asset ('public/dist_login/js/main.js') }}"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         document.getElementById('togglePassword').addEventListener('click', function () {

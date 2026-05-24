@@ -8,7 +8,7 @@
     <meta name="description" content="Create your Point Management account.">
 
     <!-- Font Icon -->
-    <link rel="stylesheet" href="{{ asset ('dist_login/fonts/material-icon/css/material-design-iconic-font.min.css') }}">
+    <link rel="stylesheet" href="{{ asset ('public/dist_login/fonts/material-icon/css/material-design-iconic-font.min.css') }}">
 
     <!-- Bootstrap 5 CDN -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -604,7 +604,7 @@
                         </form>
                     </div>
                     <div class="signup-image">
-                        <figure><img src="{{ asset ('dist_login/images/signup-image.jpg') }}" alt="sing up image"></figure>
+                        <figure><img src="{{ asset ('public/dist_login/images/signup-image.jpg') }}" alt="sing up image"></figure>
                     </div>
                 </div>
             </div>
@@ -613,8 +613,8 @@
     </div>
 
     <!-- JS -->
-    <script src="{{ asset ('dist_login/vendor/jquery/jquery.min.js') }}"></script>
-    <script src="{{ asset ('js/main.js') }}"></script>
+    <script src="{{ asset ('public/dist_login/vendor/jquery/jquery.min.js') }}"></script>
+    <script src="{{ asset ('public/js/main.js') }}"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         function toggleVisibility(inputId, iconId) {
