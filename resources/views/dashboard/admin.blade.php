@@ -363,7 +363,9 @@
       background: var(--sidebar-bg);
       border-top: 1px solid rgba(255,255,255,0.08);
       z-index: 50;
-      padding: 4px 0 env(safe-area-inset-bottom, 4px);
+      padding: 4px 10px calc(4px + env(safe-area-inset-bottom));
+      justify-content: space-around;
+      gap: 10px;
     }
     .mobile-nav-item {
       flex: 1;

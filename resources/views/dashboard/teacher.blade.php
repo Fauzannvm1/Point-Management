@@ -428,7 +428,9 @@
       background: var(--sidebar-bg);
       border-top: 1px solid rgba(255,255,255,0.08);
       z-index: 50;
-      padding: 4px 0 env(safe-area-inset-bottom, 4px);
+      padding: 4px 10px calc(4px + env(safe-area-inset-bottom));
+      justify-content: space-around;
+      gap: 10px;
     }
     .mobile-nav-item {
       flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px;
@@ -1145,7 +1147,7 @@ let dashClasses = [];
 
 async function loadDashData() {
   // Load classes for dashboard
-  const {ok, data} = await apiFetch('/admin/classes');
+  const {ok, data} = await apiFetch('/teacher/classes');
   if (ok) {
     dashClasses = Array.isArray(data) ? data : (data.classes || []);
     document.getElementById('dashClsCount').textContent = dashClasses.length;

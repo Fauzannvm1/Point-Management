@@ -14,6 +14,7 @@ use App\Models\Teacher;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
@@ -1345,12 +1346,14 @@ class TaskController extends Controller
     public function adminTeacherSubjectsStore(Request $request)
     {
         $request->validate([
-            'teacher_id' => 'required|integer|exists:teachers,id',
+            'teacher_id' => 'required|integer|exists:users,id',
             'subject_id' => 'required|integer|exists:subjects,id',
             'class_id'   => 'required|integer|exists:classes,id',
         ]);
 
-        $exists = TeacherSubject::where('teacher_id', $request->teacher_id)
+        $teacher = Teacher::where('user_id', $request->teacher_id)->firstOrFail();
+
+        $exists = TeacherSubject::where('teacher_id', $teacher->id)
                                  ->where('subject_id', $request->subject_id)
                                  ->where('class_id',   $request->class_id)
                                  ->exists();
@@ -1359,7 +1362,11 @@ class TaskController extends Controller
             return response()->json(['message' => 'This assignment already exists.'], 422);
         }
 
-        $ts = TeacherSubject::create($request->only('teacher_id', 'subject_id', 'class_id'));
+        $ts = TeacherSubject::create([
+            'teacher_id' => $teacher->id,
+            'subject_id' => $request->subject_id,
+            'class_id'   => $request->class_id,
+        ]);
 
         return response()->json($ts->load(['teacher.user', 'subject', 'class']), 201);
     }
@@ -1368,12 +1375,18 @@ class TaskController extends Controller
     public function adminTeacherSubjectsUpdate(Request $request, TeacherSubject $ts)
     {
         $request->validate([
-            'teacher_id' => 'required|integer|exists:teachers,id',
+            'teacher_id' => 'required|integer|exists:users,id',
             'subject_id' => 'required|integer|exists:subjects,id',
             'class_id'   => 'required|integer|exists:classes,id',
         ]);
 
-        $ts->update($request->only('teacher_id', 'subject_id', 'class_id'));
+        $teacher = Teacher::where('user_id', $request->teacher_id)->firstOrFail();
+
+        $ts->update([
+            'teacher_id' => $teacher->id,
+            'subject_id' => $request->subject_id,
+            'class_id'   => $request->class_id,
+        ]);
 
         return response()->json($ts->load(['teacher.user', 'subject', 'class']));
     }

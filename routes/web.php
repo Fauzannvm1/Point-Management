@@ -100,6 +100,7 @@ Route::middleware('auth')->group(function () {
  
         // Points
         Route::get('/points', [TaskController::class, 'teacherPoints']);
+        Route::post('/points', [TaskController::class, 'teacherPointsStore']);
         Route::get('/points/stats', [TaskController::class, 'teacherPointStats']);
  
         // Report
