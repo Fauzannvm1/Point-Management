@@ -134,7 +134,7 @@ class TaskController extends Controller
 
         foreach ($request->file('files') as $file) {
             $mime = $file->getMimeType();
-            $path = $file->store('task-files', 'public');
+            $path = $this->compressAndStoreFile($file, 'task-files');
 
             if (str_starts_with($mime, 'image/')) {
                 $task->images()->create([
@@ -148,6 +148,40 @@ class TaskController extends Controller
                 ]);
             }
         }
+    }
+
+    /**
+     * Compress images and set correct permissions to prevent 403.
+     */
+    private function compressAndStoreFile($file, $folder)
+    {
+        $mime = $file->getMimeType();
+        $ext = $file->getClientOriginalExtension() ?: 'bin';
+        $fileName = \Illuminate\Support\Str::random(40) . '.' . $ext;
+        $path = $folder . '/' . $fileName;
+        $absolutePath = storage_path('app/public/' . $path);
+
+        if (!file_exists(dirname($absolutePath))) {
+            mkdir(dirname($absolutePath), 0755, true);
+        }
+
+        if (str_starts_with($mime, 'image/')) {
+            $image = null;
+            if ($mime == 'image/jpeg' || $mime == 'image/jpg') $image = @imagecreatefromjpeg($file->getRealPath());
+            elseif ($mime == 'image/png') $image = @imagecreatefrompng($file->getRealPath());
+            elseif ($mime == 'image/webp') $image = @imagecreatefromwebp($file->getRealPath());
+
+            if ($image !== false && $image !== null) {
+                imagejpeg($image, $absolutePath, 75);
+                imagedestroy($image);
+                @chmod($absolutePath, 0644);
+                return $path;
+            }
+        }
+
+        $path = $file->store($folder, 'public');
+        @chmod(storage_path('app/public/' . $path), 0644);
+        return $path;
     }
 
     // Main Dashboard GET /dashboard
@@ -217,8 +251,10 @@ class TaskController extends Controller
     {
         $student = $this->student();
 
+        $classIds = \App\Models\ClassEnrollment::where('student_id', $student->id)->pluck('class_id');
+
         $totalTasks     = Task::whereHas('teacherSubject',
-                              fn($q) => $q->where('class_id', $student->class_id)
+                              fn($q) => $q->whereIn('class_id', $classIds)
                           )->count();
         $pendingTasks   = TaskSubmission::where('student_id', $student->id)
                               ->where('status', 'taken')->count();
@@ -227,7 +263,7 @@ class TaskController extends Controller
         $totalPoints    = Point::where('student_id', $student->id)->sum('point');
 
         $recentTasks = Task::with(['teacherSubject.subject'])
-            ->whereHas('teacherSubject', fn($q) => $q->where('class_id', $student->class_id))
+            ->whereHas('teacherSubject', fn($q) => $q->whereIn('class_id', $classIds))
             ->latest()
             ->limit(5)
             ->get()
@@ -331,10 +367,15 @@ class TaskController extends Controller
                 'url'  => Storage::url($a->path),
                 'name' => $a->original_name ?? basename($a->path),
             ]),
-            'submission'  => $submission ? [
+            'my_submission' => $submission ? [
                 'status'   => $submission->status,
                 'grade'    => $submission->grade,
                 'feedback' => $submission->feedback,
+                'notes'    => $submission->note,
+                'files'    => $submission->files()->get()->map(fn($f) => [
+                    'url'  => Storage::url($f->path),
+                    'name' => $f->original_name ?? basename($f->path),
+                ]),
             ] : null,
         ]);
     }
@@ -904,8 +945,10 @@ class TaskController extends Controller
     {
         $student = $this->student();
 
+        $classIds = \App\Models\ClassEnrollment::where('student_id', $student->id)->pluck('class_id');
+
         $tasks = Task::with(['teacherSubject.subject', 'teacherSubject.teacher.user'])
-            ->whereHas('teacherSubject', fn($q) => $q->where('class_id', $student->class_id))
+            ->whereHas('teacherSubject', fn($q) => $q->whereIn('class_id', $classIds))
             ->latest()
             ->get()
             ->map(function ($t) use ($student) {
@@ -1029,7 +1072,7 @@ class TaskController extends Controller
 
         if ($request->hasFile('files')) {
             foreach ($request->file('files') as $file) {
-                $path = $file->store('submissions/' . $submission->id, 'public');
+                $path = $this->compressAndStoreFile($file, 'submissions/' . $submission->id);
                 $submission->files()->create([
                     'path'          => $path,
                     'original_name' => $file->getClientOriginalName(),

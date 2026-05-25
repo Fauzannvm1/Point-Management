@@ -122,7 +122,18 @@ class ClassController extends Controller
      */
     public function adminDestroy(int $id): JsonResponse
     {
-        SchoolClass::findOrFail($id)->delete();
+        $class = SchoolClass::findOrFail($id);
+
+        // Manually delete related enrollments and teacher_subjects to prevent constraint errors
+        \App\Models\ClassEnrollment::where('class_id', $id)->delete();
+        
+        $teacherSubjects = \App\Models\TeacherSubject::where('class_id', $id)->get();
+        foreach ($teacherSubjects as $ts) {
+            $ts->tasks()->delete();
+            $ts->delete();
+        }
+
+        $class->delete();
 
         return response()->json(['message' => 'Class deleted successfully.']);
     }

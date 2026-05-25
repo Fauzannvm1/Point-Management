@@ -464,6 +464,14 @@
       .filter-row select { width: 100% !important; }
       .class-grid { grid-template-columns: 1fr !important; }
     }
+    body {
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    input, textarea, select, .join-code-box .mono {
+      user-select: text;
+      -webkit-user-select: text;
+    }
   </style>
 </head>
 <body>
@@ -1430,7 +1438,8 @@ async function viewTaskDetail(id) {
           ${gradeHtml}
         </div>
         ${s.feedback ? `<p style="font-size:12px;color:#64748b;font-style:italic">"${s.feedback}"</p>` : ''}
-        ${s.notes    ? `<p style="font-size:12px;color:#475569;margin-top:4px">Your notes: ${s.notes}</p>` : ''}
+        ${s.notes    ? `<p style="font-size:12px;color:#475569;margin-top:4px;margin-bottom:8px">Your notes: ${s.notes}</p>` : ''}
+        ${s.files && s.files.length ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${s.files.map(f => `<a href="${f.url}" target="_blank" style="font-size:10px;background:#e2e8f0;padding:4px 8px;border-radius:6px;color:#334155;text-decoration:none">${f.name}</a>`).join('')}</div>` : ''}
       </div>`;
   } else {
     mySubWrap.style.display = 'none';
@@ -1600,6 +1609,20 @@ async function loadReport() {
       </tr>`).join('');
   }
 }
+</script>
+<script>
+// Prevent highlighting text globally except on specific inputs
+document.addEventListener('selectstart', function(e) {
+  const tag = e.target.tagName;
+  if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
+    e.preventDefault();
+  }
+});
+// Prevent accidental back navigation on mobile
+history.pushState(null, null, location.href);
+window.onpopstate = function () {
+  history.go(1);
+};
 </script>
 </body>
 </html>
