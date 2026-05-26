@@ -280,6 +280,7 @@
     }
 
     /* Status tags */
+    .s-available  { background: #e2e8f0; color: #475569; }
     .s-taken      { background: #f1f5f9; color: #64748b; }
     .s-submitted  { background: #eff6ff; color: #2563eb; }
     .s-correcting { background: #fffbeb; color: #d97706; }
@@ -663,6 +664,7 @@
         <div style="min-width:0">
           <p style="color:#fff;font-size:11px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ auth()->user()->name }}</p>
           <span class="badge" style="background:rgba(37,99,235,.2);color:#93c5fd">student</span>
+          <p style="color:#94a3b8;font-size:9px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ $classNames ?? '' }}</p>
         </div>
       </div>
     </div>
@@ -1480,7 +1482,7 @@ async function submitTask() {
   if (notes) formData.append('notes', notes);
   pendingFiles.forEach((f, i) => formData.append(`files[${i}]`, f));
 
-  const { ok, data } = await apiFetch('/student/submissions', { method: 'POST', body: formData });
+  const { ok, data } = await apiFetch(`/student/tasks/${taskId}/submit`, { method: 'POST', body: formData });
   if (ok) { closeModal('mSubmit'); loadTasks(); }
   else    { alert(data.message || 'Something went wrong.'); }
 }

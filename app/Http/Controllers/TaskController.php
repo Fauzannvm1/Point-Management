@@ -1065,10 +1065,10 @@ class TaskController extends Controller
         ]);
 
         $student    = $this->student();
-        $submission = TaskSubmission::where('task_id', $task->id)
-                                     ->where('student_id', $student->id)
-                                     ->where('status', 'taken')
-                                     ->firstOrFail();
+        $submission = TaskSubmission::firstOrCreate(
+            ['task_id' => $task->id, 'student_id' => $student->id],
+            ['status' => 'taken']
+        );
 
         if ($request->hasFile('files')) {
             foreach ($request->file('files') as $file) {

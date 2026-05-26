@@ -231,24 +231,22 @@ class AuthController extends Controller
             return redirect()->route('login')->with('error', 'Student profile not found. Please contact an administrator.');
         }
 
+        $classIds = \App\Models\ClassEnrollment::where('student_id', $student->id)->pluck('class_id');
+        $classNames = \App\Models\SchoolClass::whereIn('id', $classIds)->pluck('name')->implode(', ');
+
         // Stat cards
         $pending   = TaskSubmission::where('student_id', $student->id)
                         ->where('status', 'taken')->count();
         $submitted = TaskSubmission::where('student_id', $student->id)
-                        ->where('status', 'submitted')->count();
-        $graded    = TaskSubmission::where('student_id', $student->id)
-                        ->where('status', 'graded')->count();
+                        ->whereIn('status', ['submitted', 'correcting', 'graded'])->count();
         $totalPts  = Point::where('student_id', $student->id)->sum('point');
 
-        // Upcoming tasks for student's class
+        // Recent tasks for student's classes (including past tasks)
         $upcoming = Task::with(['teacherSubject.subject'])
             ->whereHas('teacherSubject', fn($q) =>
-                $q->where('class_id', $student->class_id)
+                $q->whereIn('class_id', $classIds)
             )
-            ->where(fn($q) =>
-                $q->whereNull('due_date')->orWhere('due_date', '>=', today())
-            )
-            ->orderBy('due_date')
+            ->latest()
             ->limit(6)
             ->get()
             ->map(function ($t) use ($student) {
@@ -278,9 +276,10 @@ class AuthController extends Controller
             ]);
 
         return view('dashboard.student', [
-            'totalTasks'     => $pending + $submitted + $graded,
+            'classNames'     => $classNames,
+            'totalTasks'     => $pending + $submitted,
             'pendingTasks'   => $pending,
-            'submittedTasks' => $submitted + $graded,
+            'submittedTasks' => $submitted,
             'totalPoints'    => $totalPts,
             'recentTasks'    => $upcoming->map(fn($t) => [
                 'title'   => $t['title'],
