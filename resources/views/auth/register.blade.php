@@ -539,6 +539,14 @@
             .form-title { font-size: 22px; }
             .form-submit { font-size: 13px; padding: 12px 20px; }
         }
+        body {
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        input, textarea, select, .join-code-box .mono {
+            user-select: text;
+            -webkit-user-select: text;
+        }
     </style>
 </head>
 <body>
@@ -638,6 +646,20 @@
         document.getElementById('togglePasswordConfirmation').addEventListener('click', function () {
             toggleVisibility('password_confirmation', 'togglePasswordConfirmation');
         });
+    </script>
+    <script>
+        // Prevent highlighting text globally except on specific inputs
+        document.addEventListener('selectstart', function(e) {
+        const tag = e.target.tagName;
+        if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
+            e.preventDefault();
+        }
+        });
+        // Prevent accidental back navigation on mobile
+        history.pushState(null, null, location.href);
+        window.onpopstate = function () {
+        history.go(1);
+        };
     </script>
 </body>
 </html>

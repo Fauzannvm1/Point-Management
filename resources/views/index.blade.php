@@ -78,6 +78,14 @@
             min-width: 2rem;
             min-height: 2rem;
         }
+        body {
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        input, textarea, select, .join-code-box .mono {
+            user-select: text;
+            -webkit-user-select: text;
+        }
     </style>
 </head>
 <body class="text-slate-700">
@@ -426,6 +434,19 @@
             });
         });
     </script>
-
+    <script>
+        // Prevent highlighting text globally except on specific inputs
+        document.addEventListener('selectstart', function(e) {
+        const tag = e.target.tagName;
+        if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
+            e.preventDefault();
+        }
+        });
+        // Prevent accidental back navigation on mobile
+        history.pushState(null, null, location.href);
+        window.onpopstate = function () {
+        history.go(1);
+        };
+    </script>
 </body>
 </html>
