@@ -251,7 +251,7 @@ class TaskController extends Controller
     {
         $student = $this->student();
 
-        $classIds = \App\Models\ClassEnrollment::where('student_id', $student->id)->pluck('class_id');
+        $classIds = \App\Models\ClassEnrollment::where('student_id', $student->user_id)->pluck('class_id');
 
         $totalTasks     = Task::whereHas('teacherSubject',
                               fn($q) => $q->whereIn('class_id', $classIds)
@@ -945,7 +945,7 @@ class TaskController extends Controller
     {
         $student = $this->student();
 
-        $classIds = \App\Models\ClassEnrollment::where('student_id', $student->id)->pluck('class_id');
+        $classIds = \App\Models\ClassEnrollment::where('student_id', $student->user_id)->pluck('class_id');
 
         $tasks = Task::with(['teacherSubject.subject', 'teacherSubject.teacher.user'])
             ->whereHas('teacherSubject', fn($q) => $q->whereIn('class_id', $classIds))
