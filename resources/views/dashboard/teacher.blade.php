@@ -410,7 +410,7 @@
     }
 
     .class-panel-body {
-      width: 500px; max-width: 100vw;
+      width: 75vw; max-width: 100vw;
       background: #fff;
       display: flex; flex-direction: column;
       overflow: hidden;
@@ -545,6 +545,7 @@
     </div>
     <div style="display:flex;flex-direction:column;gap:11px">
       <div style="background:#f0fdf9;border-radius:10px;padding:10px 12px;border:1px solid #d1faf4"><p style="font-size:9px;font-weight:600;color:#0d9488;text-transform:uppercase;margin-bottom:2px">Student</p><p style="font-size:13px;font-weight:700;color:#1e293b" id="gStudent">--</p></div>
+      <div id="gSubDetails" style="margin-bottom:4px"></div>
       <div>
         <label class="form-label">Set Status</label>
         <div class="tab-bar">
@@ -721,9 +722,15 @@
     </div>
 
     <!-- Tabs -->
-    <div style="padding:0 20px;border-bottom:1px solid #d1faf4;display:flex;flex-shrink:0">
-      <button onclick="switchCPTab('students')" id="cpTabStudents" style="padding:10px 16px;font-size:12px;font-weight:700;border:none;background:transparent;cursor:pointer;border-bottom:2px solid #0d9488;color:#0d9488;font-family:'Syne',sans-serif">Students</button>
-      <button onclick="switchCPTab('tasks')" id="cpTabTasks" style="padding:10px 16px;font-size:12px;font-weight:600;border:none;background:transparent;cursor:pointer;border-bottom:2px solid transparent;color:#94a3b8;font-family:'Syne',sans-serif">Tasks</button>
+    <div style="padding:0 20px;border-bottom:1px solid #d1faf4;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+      <div>
+        <button onclick="switchCPTab('students')" id="cpTabStudents" style="padding:10px 16px;font-size:12px;font-weight:700;border:none;background:transparent;cursor:pointer;border-bottom:2px solid #0d9488;color:#0d9488;font-family:'Syne',sans-serif">Students</button>
+        <button onclick="switchCPTab('tasks')" id="cpTabTasks" style="padding:10px 16px;font-size:12px;font-weight:600;border:none;background:transparent;cursor:pointer;border-bottom:2px solid transparent;color:#94a3b8;font-family:'Syne',sans-serif">Tasks</button>
+      </div>
+      <button onclick="exportClassData()" id="cpExportBtn" style="display:flex;align-items:center;gap:5px;background:#f0fdf9;color:#0d9488;border:1px solid #99f6e4;padding:4px 10px;border-radius:6px;font-size:10px;font-weight:600;cursor:pointer;font-family:'Syne',sans-serif;transition:all 0.15s">
+        <svg style="width:12px;height:12px" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+        Export CSV
+      </button>
     </div>
 
     <!-- Tab content -->
@@ -1276,10 +1283,11 @@ function switchCPTab(tab) {
 
 async function loadPanelStudents(classId) {
   const list = document.getElementById('cpStudentList');
-  list.innerHTML='<div style="padding:30px;text-align:center;color:#94a3b8;font-size:13px">Loading students...</div>';
-  const {ok,data} = await apiFetch(`/admin/classes/${classId}/students`);
+  list.innerHTML='<div style="padding:30px;text-align:center;color:#94a3b8;font-size:13px">Loading student report...</div>';
+  const {ok,data} = await apiFetch(`/teacher/classes/${classId}/report`);
   if (!ok) { list.innerHTML='<div style="padding:30px;text-align:center;color:#ef4444;font-size:13px">Failed to load students.</div>'; return; }
   const students=data.students||[];
+  const tasks=data.tasks||[];
   document.getElementById('cpStudentCount').textContent=students.length;
   if (!students.length) {
     list.innerHTML=`<div style="padding:40px 20px;text-align:center;color:#94a3b8">
@@ -1291,17 +1299,48 @@ async function loadPanelStudents(classId) {
     </div>`;
     return;
   }
-  list.innerHTML=students.map(s=>`
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 20px;border-bottom:1px solid #f0fdf9">
-      <div style="display:flex;align-items:center;gap:10px">
-        <div style="width:32px;height:32px;border-radius:50%;background:#f0fdf9;color:#0d9488;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;border:1px solid #d1faf4">${getInitials(s.name)}</div>
-        <div>
-          <p style="font-size:13px;font-weight:600;color:#1e293b">${s.name}</p>
-          <p style="font-size:11px;color:#94a3b8">${s.email}</p>
-        </div>
-      </div>
-      <span style="font-size:10px;color:#94a3b8;font-family:'JetBrains Mono',monospace">${formatDateShort(s.joined_at)}</span>
-    </div>`).join('');
+
+  let thHTML = `<th>Rank</th><th>Student</th><th>Total Points</th><th>Avg Grade</th>`;
+  tasks.forEach(t => {
+      thHTML += `<th class="hide-mobile" style="min-width:100px">Task: ${t.title}</th>`;
+  });
+  
+  let trHTML = students.map(s => {
+      let tds = `
+        <td class="mono" style="font-size:12px;font-weight:700;color:#0d9488">#${s.rank}</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div style="width:28px;height:28px;border-radius:50%;background:#f0fdf9;color:#0d9488;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;border:1px solid #d1faf4">${getInitials(s.name)}</div>
+            <div>
+              <p style="font-size:13px;font-weight:600;color:#1e293b">${s.name}</p>
+              <p style="font-size:10px;color:#94a3b8">${s.email}</p>
+            </div>
+          </div>
+        </td>
+        <td class="mono" style="font-size:13px;font-weight:700;color:#1e293b">${s.total_points}</td>
+        <td class="mono" style="font-size:13px;color:#64748b">${s.average_grade}</td>
+      `;
+      tasks.forEach(t => {
+          let g = s.grades[t.id];
+          if (g === null) {
+              tds += `<td class="hide-mobile mono" style="font-size:12px"><span style="color:#94a3b8">—</span> <span style="font-size:9px;color:#cbd5e1">/ ${t.max_grade}</span></td>`;
+          } else if (typeof g === 'number' || !isNaN(g)) {
+              tds += `<td class="hide-mobile mono" style="font-size:12px"><span style="color:#059669">${g}</span> <span style="font-size:9px;color:#cbd5e1">/ ${t.max_grade}</span></td>`;
+          } else {
+              tds += `<td class="hide-mobile mono" style="font-size:12px"><span class="tag s-${g}" style="font-size:9px;padding:2px 4px;margin-bottom:0;text-transform:capitalize">${g}</span></td>`;
+          }
+      });
+      return `<tr class="table-row">${tds}</tr>`;
+  }).join('');
+  
+  list.innerHTML = `
+    <div style="overflow-x:auto;width:100%">
+      <table style="width:100%;border-collapse:collapse;white-space:nowrap">
+        <thead><tr class="table-head">${thHTML}</tr></thead>
+        <tbody>${trHTML}</tbody>
+      </table>
+    </div>
+  `;
 }
 
 async function loadPanelTasks(classId) {
@@ -1340,6 +1379,11 @@ function editClassFromPanel() {
   if (!currentPanelClassId) return;
   const id=currentPanelClassId; closeClassPanel();
   setTimeout(()=>openEditClassFull(id), 300);
+}
+
+function exportClassData() {
+  if (!currentPanelClassId) return;
+  window.location.href = `/teacher/classes/${currentPanelClassId}/export`;
 }
 
 function deleteClassFromPanel() {
@@ -1467,6 +1511,7 @@ async function loadSubmissions() {
   if(taskSel.value) params.append('task_id',taskSel.value);
   const status=document.getElementById('sfStatus').value; if(status) params.append('status',status);
   const {ok,data}=await apiFetch(`/teacher/submissions?${params}`); if(!ok) return;
+  window.currentSubmissions = data;
   const tbody=document.getElementById('subBody'), empty=document.getElementById('subEmpty');
   if(!data.length){ tbody.innerHTML=''; empty.style.display='block'; return; }
   empty.style.display='none';
@@ -1474,7 +1519,7 @@ async function loadSubmissions() {
     const gradeHtml=s.grade!==null?`<span class="mono" style="font-weight:700;color:#059669">${s.grade}/${s.max_grade}</span>`:'<span style="color:#94a3b8;font-size:11px">—</span>';
     const actions=[];
     if(s.status==='submitted') actions.push(`<button onclick="setSubmissionStatus(${s.id},'correcting')" class="btn-amber" style="font-size:10px">Review</button>`);
-    if(s.status==='submitted'||s.status==='correcting') actions.push(`<button onclick="openGradeModal(${s.id},'${(s.student_name||'').replace(/'/g,"\\'")}',${s.max_grade})" class="btn-primary" style="font-size:10px;padding:4px 8px">Grade</button>`);
+    if(s.status==='submitted'||s.status==='correcting') actions.push(`<button onclick="openGradeModal(${s.id})" class="btn-primary" style="font-size:10px;padding:4px 8px">Grade</button>`);
     return `<tr class="table-row">
       <td><div style="display:flex;align-items:center;gap:8px"><div style="width:27px;height:27px;border-radius:50%;background:#f0fdf9;color:#0d9488;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex-shrink:0">${getInitials(s.student_name)}</div><div><p style="font-weight:600;font-size:13px;color:#1e293b">${s.student_name}</p><p class="hide-mobile" style="font-size:11px;color:#94a3b8">${s.class||'--'}</p></div></div></td>
       <td class="hide-mobile" style="font-weight:500;color:#374151;font-size:13px">${s.task_title||'--'}</td>
@@ -1494,10 +1539,31 @@ function setGradeStatus(status,btn) {
   document.getElementById('gStatus').value=status;
   document.querySelectorAll('#mGrade .tab-btn').forEach(b=>b.classList.remove('on')); btn.classList.add('on');
 }
-function openGradeModal(submissionId,studentName,maxGrade) {
-  document.getElementById('gSubID').value=submissionId; document.getElementById('gStudent').textContent=studentName;
-  document.getElementById('gMax').textContent=maxGrade; document.getElementById('gVal').value=''; document.getElementById('gVal').max=maxGrade;
+function openGradeModal(submissionId) {
+  const s = window.currentSubmissions.find(x => x.id === submissionId);
+  if (!s) return;
+  document.getElementById('gSubID').value=submissionId; document.getElementById('gStudent').textContent=s.student_name;
+  document.getElementById('gMax').textContent=s.max_grade; document.getElementById('gVal').value=''; document.getElementById('gVal').max=s.max_grade;
   document.getElementById('gFeedback').value=''; document.getElementById('gStatus').value='graded';
+  
+  const detailsEl = document.getElementById('gSubDetails');
+  if (detailsEl) {
+    let html = '';
+    if (s.note) html += `<div style="margin-bottom:8px"><p style="font-size:11px;font-weight:600;color:#64748b;margin-bottom:2px">Student's Note</p><p style="font-size:13px;color:#1e293b;background:#f8fafc;padding:8px 10px;border-radius:8px;border:1px solid #e2e8f0">${s.note}</p></div>`;
+    if (s.files && s.files.length) {
+      html += `<p style="font-size:11px;font-weight:600;color:#64748b;margin-bottom:4px">Attached Files</p><div style="display:flex;flex-wrap:wrap;gap:6px">`;
+      html += s.files.map(f => {
+        if (f.name.match(/\\.(jpeg|jpg|png|webp|gif)$/i)) {
+          return `<a href="${f.url}" target="_blank"><img src="${f.url}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;border:1px solid #cbd5e1"></a>`;
+        }
+        return `<a href="${f.url}" target="_blank" style="font-size:11px;background:#e2e8f0;padding:4px 8px;border-radius:6px;color:#334155;text-decoration:none">${f.name}</a>`;
+      }).join('');
+      html += `</div>`;
+    }
+    if (!html) html = `<p style="font-size:12px;color:#94a3b8;font-style:italic">No notes or files submitted.</p>`;
+    detailsEl.innerHTML = html;
+  }
+  
   document.querySelectorAll('#mGrade .tab-btn').forEach((b,i)=>b.classList.toggle('on',i===1)); openModal('mGrade');
 }
 async function submitGrade() {

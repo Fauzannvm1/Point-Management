@@ -349,6 +349,153 @@ class ClassController extends Controller
         return response()->json(['code' => $class->code, 'class_name' => $class->name]);
     }
 
+    /**
+     * GET /teacher/classes/{id}/export
+     * Export student report to CSV.
+     */
+    public function teacherExportStudents(int $id)
+    {
+        $class = $this->findTeacherClass($id);
+        $students = $this->getStudentList($class);
+        
+        // Use the teacherSubject relation to get tasks for this specific class
+        // Tasks are associated with teacherSubject, so we query Task where teacher_subject_id points to this class
+        $tsIds = \App\Models\TeacherSubject::where('class_id', $class->id)->pluck('id');
+        $tasks = \App\Models\Task::whereIn('teacher_subject_id', $tsIds)->orderBy('due_date')->get();
+
+        $headers = [
+            'Content-type'        => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="class_' . $class->code . '_report.csv"',
+            'Pragma'              => 'no-cache',
+            'Cache-Control'       => 'must-revalidate, post-check=0, pre-check=0',
+            'Expires'             => '0'
+        ];
+
+        $columns = ['Class Rank', 'Student Name', 'Email', 'Joined At'];
+        foreach ($tasks as $task) {
+            $columns[] = 'Task: ' . $task->title;
+        }
+        $columns[] = 'Total Points';
+        $columns[] = 'Average Grade';
+
+        $callback = function() use($students, $columns, $tasks) {
+            $file = fopen('php://output', 'w');
+            fputcsv($file, $columns);
+
+            $rows = [];
+            foreach ($students as $student) {
+                $rowData = [
+                    'Student Name'  => $student['name'],
+                    'Email'         => $student['email'],
+                    'Joined At'     => $student['joined_at']->format('Y-m-d'),
+                ];
+
+                $totalPoints = 0;
+                $totalGraded = 0;
+
+                $studentModelId = \App\Models\Student::where('user_id', $student['id'])->value('id');
+
+                foreach ($tasks as $task) {
+                    $submission = \App\Models\TaskSubmission::where('task_id', $task->id)
+                        ->where('student_id', $studentModelId)
+                        ->first();
+                    
+                    if ($submission && $submission->grade !== null) {
+                        $rowData['Task: ' . $task->title] = $submission->grade;
+                        $totalPoints += $submission->grade;
+                        $totalGraded++;
+                    } else {
+                        $rowData['Task: ' . $task->title] = '0';
+                    }
+                }
+                
+                $rowData['Total Points'] = $totalPoints;
+                $rowData['Average Grade'] = $totalGraded > 0 ? round($totalPoints / $totalGraded, 2) : 0;
+                $rows[] = $rowData;
+            }
+
+            usort($rows, function ($a, $b) {
+                return $b['Total Points'] <=> $a['Total Points'];
+            });
+
+            $rank = 1;
+            foreach ($rows as $row) {
+                $csvRow = [$rank++, $row['Student Name'], $row['Email'], $row['Joined At']];
+                foreach ($tasks as $task) {
+                    $csvRow[] = $row['Task: ' . $task->title];
+                }
+                $csvRow[] = $row['Total Points'];
+                $csvRow[] = $row['Average Grade'];
+                fputcsv($file, $csvRow);
+            }
+            fclose($file);
+        };
+
+        return response()->stream($callback, 200, $headers);
+    }
+
+    /**
+     * GET /teacher/classes/{id}/report
+     * Get JSON report data for class students.
+     */
+    public function teacherClassReport(int $id): JsonResponse
+    {
+        $class = SchoolClass::findOrFail($id);
+        
+        $students = $this->getStudentList($class);
+        $tsIds = \App\Models\TeacherSubject::where('class_id', $class->id)->pluck('id');
+        $tasks = \App\Models\Task::whereIn('teacher_subject_id', $tsIds)->orderBy('due_date')->get();
+
+        $rows = [];
+        foreach ($students as $student) {
+            $rowData = [
+                'id' => $student['id'],
+                'name'  => $student['name'],
+                'email'         => $student['email'],
+                'joined_at'     => $student['joined_at']->format('Y-m-d'),
+                'grades' => []
+            ];
+
+            $totalPoints = 0;
+            $totalGraded = 0;
+
+            $studentModelId = \App\Models\Student::where('user_id', $student['id'])->value('id');
+
+            foreach ($tasks as $task) {
+                $submission = \App\Models\TaskSubmission::where('task_id', $task->id)
+                    ->where('student_id', $studentModelId)
+                    ->first();
+                
+                if ($submission && $submission->grade !== null) {
+                    $rowData['grades'][$task->id] = $submission->grade;
+                    $totalPoints += $submission->grade;
+                    $totalGraded++;
+                } elseif ($submission) {
+                    $rowData['grades'][$task->id] = $submission->status;
+                } else {
+                    $rowData['grades'][$task->id] = null;
+                }
+            }
+            
+            $rowData['total_points'] = $totalPoints;
+            $rowData['average_grade'] = $totalGraded > 0 ? round($totalPoints / $totalGraded, 2) : 0;
+            $rows[] = $rowData;
+        }
+
+        usort($rows, function ($a, $b) {
+            return $b['total_points'] <=> $a['total_points'];
+        });
+
+        foreach ($rows as $index => &$row) {
+            $row['rank'] = $index + 1;
+        }
+
+        return response()->json([
+            'tasks' => $tasks->map(fn($t) => ['id' => $t->id, 'title' => $t->title, 'max_grade' => $t->max_grade]),
+            'students' => $rows
+        ]);
+    }
+
 
     // STUDENT
 
@@ -443,7 +590,7 @@ class ClassController extends Controller
     {
         $class = SchoolClass::with(['subject:id,name'])->findOrFail($id);
 
-        if ($class->teacher_id !== Auth::id()) {
+        if (Auth::user()->role !== 'admin' && $class->teacher_id !== Auth::id()) {
             abort(403, 'You do not have access to this class.');
         }
 

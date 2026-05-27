@@ -8,6 +8,7 @@ use App\Models\TeacherSubject;
 use App\Models\Point;
 use App\Models\Subject;
 use App\Models\Classes;   
+use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Models\User;
 use App\Models\Teacher;
@@ -167,9 +168,11 @@ class TaskController extends Controller
 
         if (str_starts_with($mime, 'image/')) {
             $image = null;
-            if ($mime == 'image/jpeg' || $mime == 'image/jpg') $image = @imagecreatefromjpeg($file->getRealPath());
-            elseif ($mime == 'image/png') $image = @imagecreatefrompng($file->getRealPath());
-            elseif ($mime == 'image/webp') $image = @imagecreatefromwebp($file->getRealPath());
+            if (extension_loaded('gd')) {
+                if ($mime == 'image/jpeg' || $mime == 'image/jpg') $image = @imagecreatefromjpeg($file->getRealPath());
+                elseif ($mime == 'image/png') $image = @imagecreatefrompng($file->getRealPath());
+                elseif ($mime == 'image/webp') $image = @imagecreatefromwebp($file->getRealPath());
+            }
 
             if ($image !== false && $image !== null) {
                 imagejpeg($image, $absolutePath, 75);
@@ -230,9 +233,9 @@ class TaskController extends Controller
             ->limit(8)
             ->get()
             ->map(fn($s) => [
-                'student' => $s->student->user->name                 ?? '--',
+                'student' => $s->student->user?->name                 ?? '--',
                 'task'    => $s->task->title                          ?? '--',
-                'subject' => $s->task->teacherSubject->subject->name  ?? '--',
+                'subject' => $s->task->teacherSubject->subject?->name  ?? '--',
                 'status'  => $s->status,
                 'grade'   => $s->grade,
             ]);
@@ -251,7 +254,7 @@ class TaskController extends Controller
     {
         $student = $this->student();
 
-        $classIds = \App\Models\ClassEnrollment::where('student_id', $student->user_id)->pluck('class_id');
+        $classIds = \App\Models\ClassEnrollment::where('student_id', Auth::id())->pluck('class_id');
 
         $totalTasks     = Task::whereHas('teacherSubject',
                               fn($q) => $q->whereIn('class_id', $classIds)
@@ -272,7 +275,7 @@ class TaskController extends Controller
                                      ->where('student_id', $student->id)->first();
                 return [
                     'title'   => $t->title,
-                    'subject' => $t->teacherSubject->subject->name ?? '--',
+                    'subject' => $t->teacherSubject->subject?->name ?? '--',
                     'due'     => $t->due_date
                                    ? \Carbon\Carbon::parse($t->due_date)->format('d M')
                                    : '--',
@@ -311,11 +314,11 @@ class TaskController extends Controller
             ->limit(10)
             ->get()
             ->map(fn($p) => [
-                'student' => $p->student->user->name              ?? '--',
-                'teacher' => $p->teacherSubject->teacher->user->name ?? '--',
+                'student' => $p->student->user?->name              ?? '--',
+                'teacher' => $p->teacherSubject->teacher->user?->name ?? '--',
                 'points'  => $p->point,
                 'type'    => $p->type ?? ($p->point >= 0 ? 'positive' : 'negative'),
-                'subject' => $p->teacherSubject->subject->name     ?? '--',
+                'subject' => $p->teacherSubject->subject?->name     ?? '--',
             ]);
 
         return view('dashboard.admin', compact(
@@ -354,9 +357,9 @@ class TaskController extends Controller
             'id'          => $task->id,
             'title'       => $task->title,
             'description' => $task->description,
-            'subject'     => $task->teacherSubject->subject->name           ?? '--',
-            'class'       => $task->teacherSubject->class->name             ?? '--',
-            'teacher'     => $task->teacherSubject->teacher->user->name     ?? '--',
+            'subject'     => $task->teacherSubject->subject?->name           ?? '--',
+            'class'       => $task->teacherSubject->class?->name             ?? '--',
+            'teacher'     => $task->teacherSubject->teacher->user?->name     ?? '--',
             'due_date'    => $task->due_date,
             'max_grade'   => $task->max_grade,
             'images'      => $task->images->map(fn($i) => [
@@ -422,8 +425,8 @@ class TaskController extends Controller
             ->get()
             ->map(fn($ts) => [
                 'id'      => $ts->id,
-                'subject' => $ts->subject->name ?? '--',
-                'class'   => $ts->class->name   ?? '--',
+                'subject' => $ts->subject?->name ?? '--',
+                'class'   => $ts->class?->name   ?? '--',
             ]);
 
         return response()->json(compact('teacherSubjects'));
@@ -541,6 +544,7 @@ class TaskController extends Controller
             'student.user',
             'task.teacherSubject.subject',
             'task.teacherSubject.class',
+            'files',
         ])->whereHas('task', fn($q) => $q->whereIn('teacher_subject_id', $tsIds));
 
         if ($task) {
@@ -553,14 +557,19 @@ class TaskController extends Controller
 
         $submissions = $query->orderByDesc('updated_at')->get()->map(fn($s) => [
             'id'           => $s->id,
-            'student_name' => $s->student->user->name                 ?? '--',
-            'class'        => $s->task->teacherSubject->class->name    ?? '--',
+            'student_name' => $s->student->user?->name                 ?? '--',
+            'class'        => $s->task->teacherSubject->class?->name    ?? '--',
             'task_title'   => $s->task->title                          ?? '--',
-            'subject'      => $s->task->teacherSubject->subject->name  ?? '--',
+            'subject'      => $s->task->teacherSubject->subject?->name  ?? '--',
             'status'       => $s->status,
             'grade'        => $s->grade,
             'max_grade'    => $s->task->max_grade                      ?? 100,
             'feedback'     => $s->feedback,
+            'note'         => $s->note,
+            'files'        => $s->files->map(fn($f) => [
+                'url'  => Storage::url($f->path),
+                'name' => $f->original_name ?? basename($f->path),
+            ]),
             'submitted_at' => $s->submitted_at,
         ]);
 
@@ -684,8 +693,8 @@ class TaskController extends Controller
             ->get()
             ->map(fn($ts) => [
                 'id'             => $ts->id,
-                'subject_name'   => $ts->subject->name ?? '--',
-                'class_name'     => $ts->class->name   ?? '--',
+                'subject_name'   => $ts->subject?->name ?? '--',
+                'class_name'     => $ts->class?->name   ?? '--',
                 'tasks_count'    => $ts->tasks_count,
                 'students_count' => Student::where('class_id', $ts->class_id)->count(),
             ]);
@@ -703,7 +712,7 @@ class TaskController extends Controller
     public function subjectCreate(): JsonResponse
     {
         $subjects = Subject::orderBy('name')->get(['id', 'name']);
-        $classes  = Classes::orderBy('name')->get(['id', 'name']);
+        $classes  = SchoolClass::orderBy('name')->get(['id', 'name']);
 
         return response()->json(compact('subjects', 'classes'));
     }
@@ -781,8 +790,8 @@ class TaskController extends Controller
             ->orderByDesc('point_date')
             ->get()
             ->map(fn($p) => [
-                'student'     => $p->student->user->name              ?? '--',
-                'subject'     => $p->teacherSubject->subject->name     ?? '--',
+                'student'     => $p->student->user?->name              ?? '--',
+                'subject'     => $p->teacherSubject->subject?->name     ?? '--',
                 'description' => $p->description,
                 'points'      => $p->point,
                 'type'        => $p->type ?? ($p->point >= 0 ? 'positive' : 'negative'),
@@ -850,8 +859,8 @@ class TaskController extends Controller
                 ->pluck('id');
             $sq = TaskSubmission::whereIn('task_id', $ids);
             return [
-                'class_name'      => $ts->class->name   ?? '--',
-                'subject_name'    => $ts->subject->name ?? '--',
+                'class_name'      => $ts->class?->name   ?? '--',
+                'subject_name'    => $ts->subject?->name ?? '--',
                 'total_students'  => Student::where('class_id', $ts->class_id)->count(),
                 'submitted_count' => (clone $sq)->whereIn('status', ['submitted', 'correcting', 'graded'])->count(),
                 'graded_count'    => (clone $sq)->where('status', 'graded')->count(),
@@ -864,8 +873,8 @@ class TaskController extends Controller
             ->orderByDesc('point_date')
             ->get()
             ->map(fn($p) => [
-                'student'     => $p->student->user->name              ?? '--',
-                'subject'     => $p->teacherSubject->subject->name     ?? '--',
+                'student'     => $p->student->user?->name              ?? '--',
+                'subject'     => $p->teacherSubject->subject?->name     ?? '--',
                 'description' => $p->description,
                 'points'      => $p->point,
                 'type'        => $p->type ?? ($p->point >= 0 ? 'positive' : 'negative'),
@@ -903,7 +912,7 @@ class TaskController extends Controller
                 return [
                     'id'        => $t->id,
                     'title'     => $t->title,
-                    'subject'   => $t->teacherSubject->subject->name ?? '--',
+                    'subject'   => $t->teacherSubject->subject?->name ?? '--',
                     'due_date'  => $t->due_date,
                     'my_status' => $sub ? $sub->status : 'available',
                 ];
@@ -915,7 +924,7 @@ class TaskController extends Controller
             ->limit(5)
             ->get()
             ->map(fn($p) => [
-                'subject'     => $p->teacherSubject->subject->name ?? '--',
+                'subject'     => $p->teacherSubject->subject?->name ?? '--',
                 'description' => $p->description,
                 'points'      => $p->point,
                 'date'        => $p->point_date,
@@ -945,7 +954,7 @@ class TaskController extends Controller
     {
         $student = $this->student();
 
-        $classIds = \App\Models\ClassEnrollment::where('student_id', $student->user_id)->pluck('class_id');
+        $classIds = \App\Models\ClassEnrollment::where('student_id', Auth::id())->pluck('class_id');
 
         $tasks = Task::with(['teacherSubject.subject', 'teacherSubject.teacher.user'])
             ->whereHas('teacherSubject', fn($q) => $q->whereIn('class_id', $classIds))
@@ -958,8 +967,8 @@ class TaskController extends Controller
                     'id'          => $t->id,
                     'title'       => $t->title,
                     'description' => $t->description,
-                    'subject'     => $t->teacherSubject->subject->name       ?? '--',
-                    'teacher'     => $t->teacherSubject->teacher->user->name ?? '--',
+                    'subject'     => $t->teacherSubject->subject?->name       ?? '--',
+                    'teacher'     => $t->teacherSubject->teacher->user?->name ?? '--',
                     'due_date'    => $t->due_date,
                     'max_grade'   => $t->max_grade,
                     'my_status'   => $sub ? $sub->status : 'available',
@@ -997,7 +1006,7 @@ class TaskController extends Controller
             ->map(fn($s) => [
                 'id'           => $s->id,
                 'task_title'   => $s->task->title,
-                'subject'      => $s->task->teacherSubject->subject->name ?? '--',
+                'subject'      => $s->task->teacherSubject->subject?->name ?? '--',
                 'status'       => $s->status,
                 'grade'        => $s->grade,
                 'max_grade'    => $s->task->max_grade,
@@ -1108,7 +1117,7 @@ class TaskController extends Controller
             ->orderByDesc('point_date')
             ->get()
             ->map(fn($p) => [
-                'subject'     => $p->teacherSubject->subject->name ?? '--',
+                'subject'     => $p->teacherSubject->subject?->name ?? '--',
                 'description' => $p->description,
                 'points'      => $p->point,
                 'type'        => $p->type ?? ($p->point >= 0 ? 'positive' : 'negative'),
@@ -1172,8 +1181,8 @@ class TaskController extends Controller
                     ->pluck('id');
                 $sq   = TaskSubmission::where('student_id', $student->id)->whereIn('task_id', $ids);
                 return [
-                    'subject_name' => $ts->subject->name       ?? '--',
-                    'teacher_name' => $ts->teacher->user->name ?? '--',
+                    'subject_name' => $ts->subject?->name       ?? '--',
+                    'teacher_name' => $ts->teacher->user?->name ?? '--',
                     'total_tasks'  => $ids->count(),
                     'submitted'    => (clone $sq)->whereIn('status', ['submitted', 'correcting', 'graded'])->count(),
                     'avg_grade'    => (clone $sq)->where('status', 'graded')->avg('grade'),
@@ -1187,7 +1196,7 @@ class TaskController extends Controller
             ->get()
             ->map(fn($s) => [
                 'task_title' => $s->task->title,
-                'subject'    => $s->task->teacherSubject->subject->name ?? '--',
+                'subject'    => $s->task->teacherSubject->subject?->name ?? '--',
                 'grade'      => $s->grade,
                 'max_grade'  => $s->task->max_grade,
                 'feedback'   => $s->feedback,
@@ -1363,9 +1372,9 @@ class TaskController extends Controller
                 'teacher_id' => $ts->teacher_id,
                 'subject_id' => $ts->subject_id,
                 'class_id'   => $ts->class_id,
-                'teacher'    => $ts->teacher->user->name ?? '--',
-                'subject'    => $ts->subject->name       ?? '--',
-                'class'      => $ts->class->name         ?? '--',
+                'teacher'    => $ts->teacher->user?->name ?? '--',
+                'subject'    => $ts->subject?->name       ?? '--',
+                'class'      => $ts->class?->name         ?? '--',
             ]);
 
         return response()->json($rows);
@@ -1380,7 +1389,7 @@ class TaskController extends Controller
             ->filter(fn($t) => $t['id']);
 
         $subjects = Subject::orderBy('name')->get(['id', 'name']);
-        $classes  = Classes::orderBy('name')->get(['id', 'name']);
+        $classes  = SchoolClass::orderBy('name')->get(['id', 'name']);
 
         return response()->json(compact('teachers', 'subjects', 'classes'));
     }
@@ -1505,8 +1514,8 @@ class TaskController extends Controller
             ->map(fn($s) => [
                 'id'           => $s->id,
                 'student_id'   => $s->student_id,
-                'student_name' => $s->student->user->name  ?? '--',
-                'class'        => $s->student->class->name ?? '--',
+                'student_name' => $s->student->user?->name  ?? '--',
+                'class'        => $s->student->class?->name ?? '--',
                 'status'       => $s->status,
                 'grade'        => $s->grade,
                 'feedback'     => $s->feedback,
@@ -1550,8 +1559,8 @@ class TaskController extends Controller
             ->get()
             ->map(fn($s) => [
                 'id'    => $s->id,
-                'name'  => $s->user->name  ?? '--',
-                'class' => $s->class->name ?? '--',
+                'name'  => $s->user?->name  ?? '--',
+                'class' => $s->class?->name ?? '--',
             ]);
 
         return response()->json($students);
@@ -1573,9 +1582,9 @@ class TaskController extends Controller
         if ($request->type === 'negative') $query->where('point', '<', 0);
 
         $records = $query->orderByDesc('point_date')->get()->map(fn($p) => [
-            'student'     => $p->student->user->name                    ?? '--',
-            'teacher'     => $p->teacherSubject->teacher->user->name     ?? '--',
-            'subject'     => $p->teacherSubject->subject->name           ?? '--',
+            'student'     => $p->student->user?->name                    ?? '--',
+            'teacher'     => $p->teacherSubject->teacher->user?->name     ?? '--',
+            'subject'     => $p->teacherSubject->subject?->name           ?? '--',
             'description' => $p->description,
             'points'      => $p->point,
             'type'        => $p->type ?? ($p->point >= 0 ? 'positive' : 'negative'),

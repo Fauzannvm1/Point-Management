@@ -1404,7 +1404,7 @@ function renderTasks() {
 
 async function viewTaskDetail(id) {
   currentDetailTaskId = id;
-  const { ok, data } = await apiFetch(`/student/tasks/${id}`);
+  const { ok, data } = await apiFetch(`/task/${id}/detail`);
   if (!ok) { alert('Could not load task.'); return; }
 
   document.getElementById('dtTitle').textContent = data.title || '--';
@@ -1479,7 +1479,7 @@ async function submitTask() {
 
   const formData = new FormData();
   formData.append('task_id', taskId);
-  if (notes) formData.append('notes', notes);
+  if (notes) formData.append('note', notes);
   pendingFiles.forEach((f, i) => formData.append(`files[${i}]`, f));
 
   const { ok, data } = await apiFetch(`/student/tasks/${taskId}/submit`, { method: 'POST', body: formData });
@@ -1491,7 +1491,7 @@ async function submitTask() {
 //  SUBMISSIONS 
 
 async function loadSubmissions() {
-  const { ok, data } = await apiFetch('/student/submissions');
+  const { ok, data } = await apiFetch('/student/my-submissions');
   if (!ok) return;
 
   const tbody = document.getElementById('subBody');

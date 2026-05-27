@@ -408,7 +408,7 @@
       cursor: pointer;
     }
     .class-panel-body {
-      width: 520px;
+      width: 75vw;
       max-width: 100vw;
       background: #fff;
       display: flex;
@@ -731,9 +731,15 @@
     </div>
 
     <!-- Tabs -->
-    <div style="padding:0 20px;border-bottom:1px solid #f1f5f9;display:flex;gap:0;flex-shrink:0">
-      <button onclick="switchCPTab('students')" id="cpTabStudents" style="padding:10px 16px;font-size:12px;font-weight:700;border:none;background:transparent;cursor:pointer;border-bottom:2px solid #6366f1;color:#6366f1;font-family:'Syne',sans-serif">Students</button>
-      <button onclick="switchCPTab('tasks')" id="cpTabTasks" style="padding:10px 16px;font-size:12px;font-weight:600;border:none;background:transparent;cursor:pointer;border-bottom:2px solid transparent;color:#94a3b8;font-family:'Syne',sans-serif">Tasks</button>
+    <div style="padding:0 20px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+      <div>
+        <button onclick="switchCPTab('students')" id="cpTabStudents" style="padding:10px 16px;font-size:12px;font-weight:700;border:none;background:transparent;cursor:pointer;border-bottom:2px solid #6366f1;color:#6366f1;font-family:'Syne',sans-serif">Students</button>
+        <button onclick="switchCPTab('tasks')" id="cpTabTasks" style="padding:10px 16px;font-size:12px;font-weight:600;border:none;background:transparent;cursor:pointer;border-bottom:2px solid transparent;color:#94a3b8;font-family:'Syne',sans-serif">Tasks</button>
+      </div>
+      <button onclick="exportClassData()" id="cpExportBtn" style="display:flex;align-items:center;gap:5px;background:#f0f1ff;color:#6366f1;border:1px solid #e0e2ff;padding:4px 10px;border-radius:6px;font-size:10px;font-weight:600;cursor:pointer;font-family:'Syne',sans-serif;transition:all 0.15s">
+        <svg style="width:12px;height:12px" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+        Export CSV
+      </button>
     </div>
 
     <!-- Tab content -->
@@ -1336,12 +1342,13 @@ function switchCPTab(tab) {
 
 async function loadPanelStudents(classId) {
   const list = document.getElementById('cpStudentList');
-  list.innerHTML = '<div style="padding:30px;text-align:center;color:#94a3b8;font-size:13px">Loading students...</div>';
+  list.innerHTML = '<div style="padding:30px;text-align:center;color:#94a3b8;font-size:13px">Loading student report...</div>';
 
-  const {ok, data} = await apiFetch(`/admin/classes/${classId}/students`);
+  const {ok, data} = await apiFetch(`/admin/classes/${classId}/report`);
   if (!ok) { list.innerHTML = '<div style="padding:30px;text-align:center;color:#ef4444;font-size:13px">Failed to load students.</div>'; return; }
 
   const students = data.students || [];
+  const tasks = data.tasks || [];
 
   // Update count badge
   document.getElementById('cpStudentCount').textContent = students.length;
@@ -1358,20 +1365,50 @@ async function loadPanelStudents(classId) {
     return;
   }
 
-  list.innerHTML = students.map((s, i) => `
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 20px;border-bottom:1px solid #f4f5f9">
-      <div style="display:flex;align-items:center;gap:10px">
-        <div style="width:32px;height:32px;border-radius:50%;background:#f0f1ff;color:#6366f1;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${getInitials(s.name)}</div>
-        <div>
-          <p style="font-size:13px;font-weight:600;color:#1e2130">${s.name}</p>
-          <p style="font-size:11px;color:#94a3b8">${s.email}</p>
-        </div>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px">
-        <span style="font-size:10px;color:#94a3b8;font-family:'JetBrains Mono',monospace">${formatDateShort(s.joined_at)}</span>
-        <button onclick="removePanelStudent(${s.id})" class="btn-danger" style="padding:3px 7px;font-size:10px">✕</button>
-      </div>
-    </div>`).join('');
+  let thHTML = `<th>Rank</th><th>Student</th><th>Total Points</th><th>Avg Grade</th>`;
+  tasks.forEach(t => {
+      thHTML += `<th class="hide-mobile" style="min-width:100px">Task: ${t.title}</th>`;
+  });
+  thHTML += `<th>Actions</th>`;
+  
+  let trHTML = students.map(s => {
+      let tds = `
+        <td class="mono" style="font-size:12px;font-weight:700;color:#6366f1">#${s.rank}</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div style="width:28px;height:28px;border-radius:50%;background:#f0f1ff;color:#6366f1;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;border:1px solid #e0e2ff">${getInitials(s.name)}</div>
+            <div>
+              <p style="font-size:13px;font-weight:600;color:#1e2130">${s.name}</p>
+              <p style="font-size:10px;color:#94a3b8">${s.email}</p>
+            </div>
+          </div>
+        </td>
+        <td class="mono" style="font-size:13px;font-weight:700;color:#1e2130">${s.total_points}</td>
+        <td class="mono" style="font-size:13px;color:#64748b">${s.average_grade}</td>
+      `;
+      tasks.forEach(t => {
+          let g = s.grades[t.id];
+          let formattedGrade = g !== null ? `<span style="color:#6366f1">${g}</span>` : `<span style="color:#94a3b8">—</span>`;
+          tds += `<td class="hide-mobile mono" style="font-size:12px">${formattedGrade} <span style="font-size:9px;color:#cbd5e1">/ ${t.max_grade}</span></td>`;
+      });
+      tds += `
+        <td>
+            <div style="display:flex;align-items:center;gap:8px">
+                <button onclick="removePanelStudent(${s.id})" class="btn-danger" style="padding:3px 7px;font-size:10px">✕</button>
+            </div>
+        </td>
+      `;
+      return `<tr class="table-row">${tds}</tr>`;
+  }).join('');
+  
+  list.innerHTML = `
+    <div style="overflow-x:auto;width:100%">
+      <table style="width:100%;border-collapse:collapse;white-space:nowrap">
+        <thead><tr class="table-head">${thHTML}</tr></thead>
+        <tbody>${trHTML}</tbody>
+      </table>
+    </div>
+  `;
 }
 
 async function removePanelStudent(studentId) {
@@ -1424,6 +1461,11 @@ async function loadPanelTasks(classId) {
       </div>
     </div>`;
   }).join('');
+}
+
+function exportClassData() {
+  if (!currentPanelClassId) return;
+  window.location.href = `/admin/classes/${currentPanelClassId}/export`;
 }
 
 function editClassFromPanel() {

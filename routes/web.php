@@ -71,6 +71,8 @@ Route::middleware('auth')->group(function () {
         Route::put('/admin/classes/{id}', [ClassController::class, 'adminUpdate']);
         Route::delete('/admin/classes/{id}', [ClassController::class, 'adminDestroy']);
         Route::get('/admin/classes/{id}/students', [ClassController::class, 'adminStudents']);
+        Route::get('/admin/classes/{id}/report', [ClassController::class, 'teacherClassReport']); // Uses same logic
+        Route::get('/admin/classes/{id}/export', [ClassController::class, 'teacherExportStudents']); // Uses same logic
         Route::post('/admin/classes/{id}/students', [ClassController::class, 'adminAddStudent']);
         Route::delete('/admin/classes/{classId}/students/{studentId}', [ClassController::class, 'adminRemoveStudent']);
     });
@@ -113,6 +115,8 @@ Route::middleware('auth')->group(function () {
         Route::put('classes/{id}', [ClassController::class, 'teacherUpdate']);
         Route::delete('classes/{id}', [ClassController::class, 'teacherDestroy']);
         Route::get('classes/{id}/code', [ClassController::class, 'teacherCode'])->name('classes.code');
+        Route::get('classes/{id}/export', [ClassController::class, 'teacherExportStudents'])->name('classes.export');
+        Route::get('classes/{id}/report', [ClassController::class, 'teacherClassReport'])->name('classes.report');
         Route::get('classes/{id}/students', [ClassController::class, 'teacherStudents'])->name('classes.students');
         Route::delete('classes/{classId}/students/{studentId}', [ClassController::class, 'teacherRemoveStudent'])->name('classes.students.remove');
     });
@@ -132,7 +136,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/points/stats', [TaskController::class, 'studentPointStats']);
 
         // Class
-        Route::get('classes', [ClassController::class, 'index'])->name('classes.index');
+        Route::get('classes', [ClassController::class, 'studentIndex'])->name('classes.index');
         Route::post('classes/join', [ClassController::class, 'studentJoin'])->name('classes.join');
         Route::delete('classes/{id}/leave', [ClassController::class, 'studentLeave'])->name('classes.leave');
     });

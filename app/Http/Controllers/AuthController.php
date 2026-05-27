@@ -231,7 +231,7 @@ class AuthController extends Controller
             return redirect()->route('login')->with('error', 'Student profile not found. Please contact an administrator.');
         }
 
-        $classIds = \App\Models\ClassEnrollment::where('student_id', $student->user_id)->pluck('class_id');
+        $classIds = \App\Models\ClassEnrollment::where('student_id', Auth::id())->pluck('class_id');
         $classNames = \App\Models\SchoolClass::whereIn('id', $classIds)->pluck('name')->implode(', ');
 
         // Stat cards
