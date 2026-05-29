@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Teacher - PointMS</title>
+  <link rel="icon" type="image/png" href="{{ asset('storage_backup/Icon.png') }}">
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     :root {
@@ -38,6 +39,44 @@
       left: 0; top: 0;
       z-index: 60;
       transition: transform 0.25s ease;
+    }
+
+    .sidebar-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 14px;
+      border-bottom: 1px solid rgba(255,255,255,.08);
+    }
+    .sidebar-brand-icon {
+      width: 44px;
+      height: 44px;
+      flex-shrink: 0;
+      overflow: hidden;
+      border-radius: 8px;
+      background: #fff;
+      position: relative;
+    }
+    .sidebar-brand-icon img {
+      width: 115px;
+      height: auto;
+      max-width: none;
+      position: absolute;
+      left: 50%;
+      top: -14px;
+      transform: translateX(-50%);
+      display: block;
+    }
+    .sidebar-brand-name {
+      color: #fff;
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+    .sidebar-brand-tag {
+      font-size: 10px;
+      color: #94a3b8;
+      margin-top: 2px;
     }
 
     .main {
@@ -494,7 +533,7 @@
       <div><label class="form-label">Description</label><textarea id="tDesc" rows="3" class="form-input" style="resize:none" placeholder="Instructions..."></textarea></div>
       <div class="grid-2">
         <div><label class="form-label">Subject / Class <span style="color:#ef4444">*</span></label><select id="tTS" class="form-input"><option value="">-- Select --</option></select></div>
-        <div><label class="form-label">Max Grade</label><input type="number" id="tGrade" value="100" class="form-input"></div>
+        <div style="display:none"><label class="form-label">Max Grade</label><input type="number" id="tGrade" value="100" class="form-input"></div>
       </div>
       <div><label class="form-label">Due Date</label><input type="date" id="tDue" class="form-input"></div>
       <div>
@@ -729,7 +768,7 @@
       </div>
       <button onclick="exportClassData()" id="cpExportBtn" style="display:flex;align-items:center;gap:5px;background:#f0fdf9;color:#0d9488;border:1px solid #99f6e4;padding:4px 10px;border-radius:6px;font-size:10px;font-weight:600;cursor:pointer;font-family:'Syne',sans-serif;transition:all 0.15s">
         <svg style="width:12px;height:12px" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-        Export CSV
+        Export Excel
       </button>
     </div>
 
@@ -748,12 +787,13 @@
 <div class="shell">
 
   <aside class="sidebar" id="sidebar">
-    <div style="padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.08)">
-      <div style="display:flex;align-items:center;gap:10px">
-        <div style="width:26px;height:26px;border-radius:8px;background:#0d9488;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-          <svg style="width:13px;height:13px;color:#fff" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/></svg>
-        </div>
-        <div><p style="color:#fff;font-size:13px;font-weight:700">PointMS</p><p style="font-size:10px;color:#4a6080">School Point System</p></div>
+    <div class="sidebar-brand">
+      <div class="sidebar-brand-icon">
+        <img src="{{ asset('storage_backup/Icon.png') }}" alt="">
+      </div>
+      <div>
+        <p class="sidebar-brand-name">PointMS</p>
+        <p class="sidebar-brand-tag">School Point System</p>
       </div>
     </div>
 
@@ -843,7 +883,7 @@
               <div style="width:34px;height:34px;border-radius:10px;background:#f0fdf9;display:flex;align-items:center;justify-content:center"><svg style="width:16px;height:16px;color:#0d9488" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg></div>
               <span class="badge" style="background:#f0fdf9;color:#0d9488">Active</span>
             </div>
-            <p class="stat-number" style="color:#1e293b" id="dTotalTasks">--</p>
+            <p class="stat-number" style="color:#1e293b" id="dTotalTasks">{{ $totalTasks }}</p>
             <p style="font-size:11px;color:#64748b;margin-top:2px">Total Tasks</p>
           </div>
           <div class="card" style="padding:14px">
@@ -851,7 +891,7 @@
               <div style="width:34px;height:34px;border-radius:10px;background:#fffbeb;display:flex;align-items:center;justify-content:center"><svg style="width:16px;height:16px;color:#d97706" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></div>
               <span class="badge" style="background:#fffbeb;color:#d97706">Review</span>
             </div>
-            <p class="stat-number" style="color:#1e293b" id="dPendingGrading">--</p>
+            <p class="stat-number" style="color:#1e293b" id="dPendingGrading">{{ $pendingGrading }}</p>
             <p style="font-size:11px;color:#64748b;margin-top:2px">Pending Grading</p>
           </div>
           <div class="card" style="padding:14px">
@@ -859,7 +899,7 @@
               <div style="width:34px;height:34px;border-radius:10px;background:#ecfdf5;display:flex;align-items:center;justify-content:center"><svg style="width:16px;height:16px;color:#059669" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></div>
               <span class="badge" style="background:#ecfdf5;color:#059669">Done</span>
             </div>
-            <p class="stat-number" style="color:#1e293b" id="dTotalGraded">--</p>
+            <p class="stat-number" style="color:#1e293b" id="dTotalGraded">{{ $totalGraded }}</p>
             <p style="font-size:11px;color:#64748b;margin-top:2px">Graded</p>
           </div>
           <div class="card" style="padding:14px">
@@ -867,7 +907,7 @@
               <div style="width:34px;height:34px;border-radius:10px;background:#f5f3ff;display:flex;align-items:center;justify-content:center"><svg style="width:16px;height:16px;color:#7c3aed" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/></svg></div>
               <span class="badge" style="background:#f5f3ff;color:#7c3aed">Today</span>
             </div>
-            <p class="stat-number" style="color:#1e293b" id="dPointsGiven">--</p>
+            <p class="stat-number" style="color:#1e293b" id="dPointsGiven">{{ $pointsGiven }}</p>
             <p style="font-size:11px;color:#64748b;margin-top:2px">Points Today</p>
           </div>
         </div>
@@ -1457,7 +1497,7 @@ async function openEditTask(id) {
   editTaskId=id; const t=allTasks.find(x=>x.id===id);
   document.getElementById('mTaskTitle').textContent='Edit Task'; document.getElementById('tSaveBtn').textContent='Save Changes';
   document.getElementById('tTitle').value=t.title; document.getElementById('tDesc').value=t.description||'';
-  document.getElementById('tDue').value=t.due_date||''; document.getElementById('tGrade').value=t.max_grade;
+  document.getElementById('tDue').value=t.due_date||''; document.getElementById('tGrade').value=100;
   document.getElementById('tFP').style.display='none'; pendingFiles=[]; document.getElementById('tFI').value='';
   await fillTeacherSubjectSelect('tTS'); document.getElementById('tTS').value=t.teacher_subject_id;
   openModal('mTask');
@@ -1475,7 +1515,7 @@ async function saveTask() {
   if(!title||!ts){ alert('Title and Class/Subject are required.'); return; }
   const fd=new FormData();
   fd.append('title',title); fd.append('description',document.getElementById('tDesc').value.trim());
-  fd.append('teacher_subject_id',ts); fd.append('max_grade',document.getElementById('tGrade').value);
+  fd.append('teacher_subject_id',ts);
   if(document.getElementById('tDue').value) fd.append('due_date',document.getElementById('tDue').value);
   pendingFiles.forEach((f,i)=>fd.append(`files[${i}]`,f));
   if(editTaskId) fd.append('_method','PUT');

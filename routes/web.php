@@ -84,7 +84,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/tasks', [TaskController::class, 'index']);
         Route::get('/tasks/create', [TaskController::class, 'create']);
         Route::post('/tasks', [TaskController::class, 'store']);
-        Route::post('/tasks/{task}', [TaskController::class, 'update']);  
+        Route::match(['post', 'put'], '/tasks/{task}', [TaskController::class, 'update']);  
         Route::delete('/tasks/{task}', [TaskController::class, 'destroy']);
  
         // Submissions

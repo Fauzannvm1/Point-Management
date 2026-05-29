@@ -6,6 +6,7 @@
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
     <title>Register — Point Management</title>
     <meta name="description" content="Create your Point Management account.">
+    <link rel="icon" type="image/png" href="{{ asset('storage_backup/Icon.png') }}">
 
     <!-- Font Icon -->
     <link rel="stylesheet" href="{{ asset ('public/dist_login/fonts/material-icon/css/material-design-iconic-font.min.css') }}">
@@ -589,7 +590,7 @@
                                     <option value="admin">Admin</option>
                                     <option value="teacher">Teacher</option>
                                     <option value="student">Student</option>
-                                    <option value="parent">Parent</option>
+                                    <!-- <option value="parent">Parent</option> -->
                                 </select>
                             </div>
                             <div class="form-group" style="display: flex; align-items: center; position: relative;">

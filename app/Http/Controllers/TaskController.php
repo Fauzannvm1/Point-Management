@@ -458,7 +458,7 @@ class TaskController extends Controller
             'title'              => $validated['title'],
             'description'        => $validated['description'] ?? null,
             'due_date'           => $validated['due_date']     ?? null,
-            'max_grade'          => $validated['max_grade']    ?? 100,
+            'max_grade'          => 100,
         ]);
 
         $this->handleTaskFiles($task, $request);
@@ -497,7 +497,7 @@ class TaskController extends Controller
             'title'              => $validated['title']               ?? $task->title,
             'description'        => $validated['description']         ?? $task->description,
             'due_date'           => $validated['due_date']            ?? $task->due_date,
-            'max_grade'          => $validated['max_grade']           ?? $task->max_grade,
+            'max_grade'          => 100,
         ]);
 
         $this->handleTaskFiles($task, $request);
@@ -1398,14 +1398,12 @@ class TaskController extends Controller
     public function adminTeacherSubjectsStore(Request $request)
     {
         $request->validate([
-            'teacher_id' => 'required|integer|exists:users,id',
+            'teacher_id' => 'required|integer|exists:teachers,id',
             'subject_id' => 'required|integer|exists:subjects,id',
             'class_id'   => 'required|integer|exists:classes,id',
         ]);
 
-        $teacher = Teacher::where('user_id', $request->teacher_id)->firstOrFail();
-
-        $exists = TeacherSubject::where('teacher_id', $teacher->id)
+        $exists = TeacherSubject::where('teacher_id', $request->teacher_id)
                                  ->where('subject_id', $request->subject_id)
                                  ->where('class_id',   $request->class_id)
                                  ->exists();
@@ -1415,7 +1413,7 @@ class TaskController extends Controller
         }
 
         $ts = TeacherSubject::create([
-            'teacher_id' => $teacher->id,
+            'teacher_id' => $request->teacher_id,
             'subject_id' => $request->subject_id,
             'class_id'   => $request->class_id,
         ]);
@@ -1427,15 +1425,13 @@ class TaskController extends Controller
     public function adminTeacherSubjectsUpdate(Request $request, TeacherSubject $ts)
     {
         $request->validate([
-            'teacher_id' => 'required|integer|exists:users,id',
+            'teacher_id' => 'required|integer|exists:teachers,id',
             'subject_id' => 'required|integer|exists:subjects,id',
             'class_id'   => 'required|integer|exists:classes,id',
         ]);
 
-        $teacher = Teacher::where('user_id', $request->teacher_id)->firstOrFail();
-
         $ts->update([
-            'teacher_id' => $teacher->id,
+            'teacher_id' => $request->teacher_id,
             'subject_id' => $request->subject_id,
             'class_id'   => $request->class_id,
         ]);
@@ -1474,7 +1470,10 @@ class TaskController extends Controller
             'max_grade'          => 'nullable|integer|min:1',
         ]);
 
-        $task = Task::create($request->only('title', 'description', 'teacher_subject_id', 'due_date', 'max_grade'));
+        $task = Task::create(array_merge(
+            $request->only('title', 'description', 'teacher_subject_id', 'due_date'),
+            ['max_grade' => 100]
+        ));
 
         return response()->json($task->load(['teacherSubject.subject', 'teacherSubject.class']), 201);
     }
@@ -1490,7 +1489,10 @@ class TaskController extends Controller
             'max_grade'          => 'nullable|integer|min:1',
         ]);
 
-        $task->update($request->only('title', 'description', 'teacher_subject_id', 'due_date', 'max_grade'));
+        $task->update(array_merge(
+            $request->only('title', 'description', 'teacher_subject_id', 'due_date'),
+            ['max_grade' => 100]
+        ));
 
         return response()->json($task->load(['teacherSubject.subject', 'teacherSubject.class']));
     }

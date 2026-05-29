@@ -6,6 +6,7 @@
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
     <title>Log In — Point Management</title>
     <meta name="description" content="Sign in to your Point Management account.">
+    <link rel="icon" type="image/png" href="{{ asset('storage_backup/Icon.png') }}">
 
     <!-- Font Icon -->
     <link rel="stylesheet" href="{{ asset ('public/dist_login/fonts/material-icon/css/material-design-iconic-font.min.css') }}">
@@ -520,7 +521,7 @@
             <div class="container">
                 <div class="signin-content">
                     <div class="signin-image">
-                        <figure><img src="{{ asset ('public/dist_login/images/signin-image.jpg') }}" alt="sing up image"></figure>
+                        <figure><img src="{{ asset ('public/dist_login/images/signin-image.jpg') }}" alt="sign up image"></figure>
                     </div>
 
                     <div class="signin-form">

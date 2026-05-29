@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Student - PointMS</title>
+  <link rel="icon" type="image/png" href="{{ asset('storage_backup/Icon.png') }}">
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     :root {
@@ -44,6 +45,44 @@
       left: 0; top: 0;
       z-index: 60;
       transition: transform 0.25s ease;
+    }
+
+    .sidebar-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 14px;
+      border-bottom: 1px solid rgba(255,255,255,.08);
+    }
+    .sidebar-brand-icon {
+      width: 44px;
+      height: 44px;
+      flex-shrink: 0;
+      overflow: hidden;
+      border-radius: 8px;
+      background: #fff;
+      position: relative;
+    }
+    .sidebar-brand-icon img {
+      width: 115px;
+      height: auto;
+      max-width: none;
+      position: absolute;
+      left: 50%;
+      top: -14px;
+      transform: translateX(-50%);
+      display: block;
+    }
+    .sidebar-brand-name {
+      color: #fff;
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+    .sidebar-brand-tag {
+      font-size: 10px;
+      color: #94a3b8;
+      margin-top: 2px;
     }
 
     .main {
@@ -641,17 +680,13 @@
   <aside class="sidebar" id="sidebar">
 
     <!-- Logo -->
-    <div style="padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.08)">
-      <div style="display:flex;align-items:center;gap:10px">
-        <div style="width:26px;height:26px;border-radius:8px;background:#2563eb;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-          <svg style="width:13px;height:13px;color:#fff" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
-          </svg>
-        </div>
-        <div>
-          <p style="color:#fff;font-size:13px;font-weight:700">PointMS</p>
-          <p style="font-size:10px;color:#3a5070">School Point System</p>
-        </div>
+    <div class="sidebar-brand">
+      <div class="sidebar-brand-icon">
+        <img src="{{ asset('storage_backup/Icon.png') }}" alt="">
+      </div>
+      <div>
+        <p class="sidebar-brand-name">PointMS</p>
+        <p class="sidebar-brand-tag">School Point System</p>
       </div>
     </div>
 
@@ -808,6 +843,15 @@
               <div class="empty-state"><p>No tasks yet</p></div>
               @endforelse
             </div>
+          </div>
+
+          <div class="card" style="overflow:hidden;margin-top:14px">
+            <div style="padding:12px 14px;border-bottom:1px solid #dbeafe;display:flex;align-items:center;justify-content:space-between">
+              <h2 style="font-size:13px;font-weight:600;color:#1e293b">My Enrolled Classes</h2>
+              <a onclick="goToPage('classes',document.getElementById('n-classes'))" style="font-size:12px;color:#2563eb;cursor:pointer;font-weight:600">Manage →</a>
+            </div>
+            <div id="dashClassList"></div>
+            <div id="dashClassEmpty" class="empty-state" style="display:none"><p>No classes yet</p></div>
           </div>
 
           <div class="card" style="overflow:hidden">
@@ -1100,6 +1144,9 @@ async function apiFetch(url, opts = {}) {
   try { return { ok: res.ok, data: JSON.parse(text) }; } catch { return { ok: false, data: {} }; }
 }
 
+// Initial dashboard hydration
+loadDashClasses();
+
 // Sidebar
 function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('ov').classList.toggle('on'); }
 function closeSidebar()  { document.getElementById('sidebar').classList.remove('open'); document.getElementById('ov').classList.remove('on'); }
@@ -1119,6 +1166,7 @@ function goToPage(name, el) {
   if (name === 'subs')    loadSubmissions();
   if (name === 'pts')     loadPoints();
   if (name === 'rep')     loadReport();
+  if (name === 'dash')    loadDashClasses();
   closeSidebar();
 }
 
@@ -1232,6 +1280,39 @@ async function loadClasses() {
   }).join('');
 }
 
+async function loadDashClasses() {
+  const list  = document.getElementById('dashClassList');
+  const empty = document.getElementById('dashClassEmpty');
+  if (!list || !empty) return;
+
+  list.innerHTML = '<div style="padding:14px;text-align:center;color:#94a3b8;font-size:12px">Loading…</div>';
+  empty.style.display = 'none';
+
+  const { ok, data } = await apiFetch('/student/classes');
+  if (!ok) { list.innerHTML = ''; empty.style.display = 'block'; return; }
+
+  const classes = data.classes || data || [];
+  if (!classes.length) { list.innerHTML = ''; empty.style.display = 'block'; return; }
+
+  // Keep it compact: show up to 4 most recent enrollments
+  const show = classes.slice(0, 4);
+  list.innerHTML = show.map(cls => {
+    const name    = cls.name || '--';
+    const subject = cls.subject_name || cls.subject || '--';
+    const teacher = cls.teacher_name || cls.teacher || '--';
+    return `
+      <div style="padding:10px 14px;border-bottom:1px solid #eff6ff;display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <div style="min-width:0">
+          <p style="font-size:13px;font-weight:700;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</p>
+          <p style="font-size:11px;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${subject} · ${teacher}</p>
+        </div>
+        <button class="btn-danger" onclick="confirmLeaveClass(${cls.id},'${String(name).replace(/'/g,"\\'")}')" style="flex-shrink:0">Leave</button>
+      </div>`;
+  }).join('') + (classes.length > 4
+    ? `<div style="padding:10px 14px;text-align:center"><a onclick="goToPage('classes',document.getElementById('n-classes'))" style="font-size:12px;color:#2563eb;cursor:pointer;font-weight:600">View all classes</a></div>`
+    : '');
+}
+
 function openJoinClassModal() {
   document.getElementById('joinCodeInput').value = '';
   document.getElementById('joinMsg').style.display     = 'none';
@@ -1268,6 +1349,7 @@ async function joinClass() {
       closeModal('mJoinClass');
       // If on classes page, reload it
       if (document.getElementById('p-classes').classList.contains('on')) loadClasses();
+      loadDashClasses();
     }, 1400);
   } else {
     showJoinMsg(data.message || 'Invalid code or class not found.', 'error');
@@ -1296,6 +1378,7 @@ async function leaveClass() {
   if (ok) {
     closeModal('mLeaveClass');
     loadClasses();
+    loadDashClasses();
   } else {
     alert(data.message || 'Could not leave class.');
   }

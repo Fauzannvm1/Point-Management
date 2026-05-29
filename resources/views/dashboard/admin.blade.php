@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Admin - PointMS</title>
+  <link rel="icon" type="image/png" href="{{ asset('storage_backup/Icon.png') }}">
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     :root {
@@ -39,6 +40,44 @@
       left: 0; top: 0;
       z-index: 60;
       transition: transform 0.25s ease;
+    }
+
+    .sidebar-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 14px;
+      border-bottom: 1px solid rgba(255,255,255,.08);
+    }
+    .sidebar-brand-icon {
+      width: 44px;
+      height: 44px;
+      flex-shrink: 0;
+      overflow: hidden;
+      border-radius: 8px;
+      background: #fff;
+      position: relative;
+    }
+    .sidebar-brand-icon img {
+      width: 115px;
+      height: auto;
+      max-width: none;
+      position: absolute;
+      left: 50%;
+      top: -14px;
+      transform: translateX(-50%);
+      display: block;
+    }
+    .sidebar-brand-name {
+      color: #fff;
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+    .sidebar-brand-tag {
+      font-size: 10px;
+      color: #94a3b8;
+      margin-top: 2px;
     }
 
     .main {
@@ -505,7 +544,7 @@
       <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">Teacher Subject</label><select id="tTS" class="form-input"><option value="">-- Select --</option></select></div>
       <div class="grid-2">
         <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">Due Date</label><input type="date" id="tDue" class="form-input"></div>
-        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">Max Grade</label><input type="number" id="tGrade" value="100" class="form-input"></div>
+        <div style="display:none"><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">Max Grade</label><input type="number" id="tGrade" value="100" class="form-input"></div>
       </div>
     </div>
     <div style="display:flex;gap:10px;margin-top:18px">
@@ -738,7 +777,7 @@
       </div>
       <button onclick="exportClassData()" id="cpExportBtn" style="display:flex;align-items:center;gap:5px;background:#f0f1ff;color:#6366f1;border:1px solid #e0e2ff;padding:4px 10px;border-radius:6px;font-size:10px;font-weight:600;cursor:pointer;font-family:'Syne',sans-serif;transition:all 0.15s">
         <svg style="width:12px;height:12px" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-        Export CSV
+        Export Excel
       </button>
     </div>
 
@@ -759,15 +798,13 @@
 <div class="shell">
 
   <aside class="sidebar" id="sidebar">
-    <div style="padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.08)">
-      <div style="display:flex;align-items:center;gap:10px">
-        <div style="width:28px;height:28px;border-radius:8px;background:#6366f1;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-          <svg style="width:14px;height:14px;color:#fff" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/></svg>
-        </div>
-        <div>
-          <p style="color:#fff;font-size:13px;font-weight:700;line-height:1.2">PointMS</p>
-          <p style="font-size:10px;color:#5c6080">School Point System</p>
-        </div>
+    <div class="sidebar-brand">
+      <div class="sidebar-brand-icon">
+        <img src="{{ asset('storage_backup/Icon.png') }}" alt="">
+      </div>
+      <div>
+        <p class="sidebar-brand-name">PointMS</p>
+        <p class="sidebar-brand-tag">School Point System</p>
       </div>
     </div>
 
@@ -1095,7 +1132,6 @@
       <div id="p-rep" class="page">
         <div class="page-header">
           <div><h2 style="font-size:15px;font-weight:700;color:#1e2130">Reports</h2><p style="font-size:12px;color:#64748b;margin-top:2px">Full point transaction history</p></div>
-          <button class="btn-secondary"><svg style="width:13px;height:13px" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>Export CSV</button>
         </div>
         <div class="grid-4" style="margin-bottom:14px">
           <div class="card" style="padding:14px;text-align:center"><p class="stat-number" style="color:#6366f1" id="rTotal">--</p><p style="font-size:11px;color:#64748b;margin-top:3px">Total Points</p></div>
@@ -1896,7 +1932,7 @@ async function openEditTask(id) {
   document.getElementById('tTitle').value=t.title;
   document.getElementById('tDesc').value=t.description||'';
   document.getElementById('tDue').value=t.due_date||'';
-  document.getElementById('tGrade').value=t.max_grade;
+  document.getElementById('tGrade').value='100';
   await populateTeacherSubjectSelect('tTS');
   document.getElementById('tTS').value=t.teacher_subject_id;
   openModal('mTask');
@@ -1905,7 +1941,7 @@ async function openEditTask(id) {
 async function saveTask() {
   const title=document.getElementById('tTitle').value.trim(), ts=document.getElementById('tTS').value;
   if(!title||!ts){ alert('Title and Teacher Subject required.'); return; }
-  const {ok,data} = await apiFetch(editTaskId?`/admin/tasks/${editTaskId}`:'/admin/tasks',{method:editTaskId?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,description:document.getElementById('tDesc').value.trim(),teacher_subject_id:ts,due_date:document.getElementById('tDue').value||null,max_grade:document.getElementById('tGrade').value})});
+  const {ok,data} = await apiFetch(editTaskId?`/admin/tasks/${editTaskId}`:'/admin/tasks',{method:editTaskId?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,description:document.getElementById('tDesc').value.trim(),teacher_subject_id:ts,due_date:document.getElementById('tDue').value||null})});
   if(ok){ closeModal('mTask'); loadTasks(); } else { alert(data.message||'Something went wrong.'); }
 }
 

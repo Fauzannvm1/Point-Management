@@ -768,8 +768,9 @@ class AuthController extends Controller
             'description'        => 'nullable|string',
             'teacher_subject_id' => 'required|exists:teacher_subjects,id',
             'due_date'           => 'nullable|date',
-            'max_grade'          => 'integer|min:1|max:100',
         ]);
+
+        $validated['max_grade'] = 100;
 
         return response()->json(Task::create($validated), 201);
     }
@@ -787,8 +788,9 @@ class AuthController extends Controller
             'title'             => 'required|string|max:150',
             'description'       => 'nullable|string',
             'due_date'          => 'nullable|date',
-            'max_grade'         => 'integer|min:1|max:100',
         ]);
+
+        $validated['max_grade'] = 100;
 
         $task->update($validated);
         return response()->json($task);

@@ -371,24 +371,27 @@ class ClassController extends Controller
             'Expires'             => '0'
         ];
 
-        $columns = ['Class Rank', 'Student Name', 'Email', 'Joined At'];
-        foreach ($tasks as $task) {
-            $columns[] = 'Task: ' . $task->title;
-        }
+        // Required columns:
+        // No, Student Name, task columns (task title), Total Points, Average Points, Class Grade
+        $columns = ['No', 'Student Name'];
+        foreach ($tasks as $task) $columns[] = $task->title;
         $columns[] = 'Total Points';
-        $columns[] = 'Average Grade';
+        $columns[] = 'Average Points';
+        $columns[] = 'Class Grade';
 
-        $callback = function() use($students, $columns, $tasks) {
+        $callback = function() use($students, $columns, $tasks, $class) {
             $file = fopen('php://output', 'w');
-            fputcsv($file, $columns);
+            $delimiter = ';';
+
+            // UTF-8 BOM helps Excel detect encoding correctly.
+            fwrite($file, "\xEF\xBB\xBF");
+
+            // Use locale-friendly delimiter so Excel opens each field in its own column.
+            fputcsv($file, $columns, $delimiter);
 
             $rows = [];
             foreach ($students as $student) {
-                $rowData = [
-                    'Student Name'  => $student['name'],
-                    'Email'         => $student['email'],
-                    'Joined At'     => $student['joined_at']->format('Y-m-d'),
-                ];
+                $rowData = ['Student Name' => $student['name']];
 
                 $totalPoints = 0;
                 $totalGraded = 0;
@@ -401,16 +404,17 @@ class ClassController extends Controller
                         ->first();
                     
                     if ($submission && $submission->grade !== null) {
-                        $rowData['Task: ' . $task->title] = $submission->grade;
+                        $rowData[$task->title] = $submission->grade;
                         $totalPoints += $submission->grade;
                         $totalGraded++;
                     } else {
-                        $rowData['Task: ' . $task->title] = '0';
+                        $rowData[$task->title] = '0';
                     }
                 }
                 
                 $rowData['Total Points'] = $totalPoints;
-                $rowData['Average Grade'] = $totalGraded > 0 ? round($totalPoints / $totalGraded, 2) : 0;
+                $rowData['Average Points'] = $totalGraded > 0 ? round($totalPoints / $totalGraded, 2) : 0;
+                $rowData['Class Grade'] = $class->name;
                 $rows[] = $rowData;
             }
 
@@ -418,15 +422,16 @@ class ClassController extends Controller
                 return $b['Total Points'] <=> $a['Total Points'];
             });
 
-            $rank = 1;
+            $no = 1;
             foreach ($rows as $row) {
-                $csvRow = [$rank++, $row['Student Name'], $row['Email'], $row['Joined At']];
+                $csvRow = [$no++, $row['Student Name']];
                 foreach ($tasks as $task) {
-                    $csvRow[] = $row['Task: ' . $task->title];
+                    $csvRow[] = $row[$task->title] ?? '0';
                 }
                 $csvRow[] = $row['Total Points'];
-                $csvRow[] = $row['Average Grade'];
-                fputcsv($file, $csvRow);
+                $csvRow[] = $row['Average Points'];
+                $csvRow[] = $row['Class Grade'];
+                fputcsv($file, $csvRow, $delimiter);
             }
             fclose($file);
         };
