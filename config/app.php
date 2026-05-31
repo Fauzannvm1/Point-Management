@@ -56,6 +56,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Asset URL
+    |--------------------------------------------------------------------------
+    |
+    | When the web root is not the "public" folder (e.g. index.php moved up),
+    | leave this null and use the root .htaccess to serve files from public/.
+    | Set ASSET_URL only if static files are exposed at a different base URL.
+    |
+    */
+
+    'asset_url' => env('ASSET_URL'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

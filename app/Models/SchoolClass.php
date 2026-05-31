@@ -44,15 +44,13 @@ class SchoolClass extends Model
         );
     }
 
-    /** Students enrolled in this class (via pivot) */
+    /**
+     * Users (students) enrolled in this class.
+     */
     public function students(): BelongsToMany
     {
-        return $this->belongsToMany(
-            User::class,
-            'class_enrollments',
-            'class_id',
-            'student_id'
-        )->withTimestamps();
+        return $this->belongsToMany(User::class, 'class_enrollments', 'class_id', 'user_id')
+                    ->withTimestamps();
     }
 
     /** Enrollment records */

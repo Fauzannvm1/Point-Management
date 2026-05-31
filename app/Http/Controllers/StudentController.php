@@ -18,14 +18,19 @@ class StudentController extends Controller
     {
         $student = $this->student();
 
-        $tasks = Task::with(['teacherSubject.subject', 'teacherSubject.teacher.user'])
+        $tasksQuery = Task::with(['teacherSubject.subject', 'teacherSubject.teacher.user'])
             ->whereHas('teacherSubject', fn ($q) => $q->where('class_id', $student->class_id))
             ->latest()
+            ->get();
+
+        $taskIds = $tasksQuery->pluck('id');
+        $submissions = TaskSubmission::whereIn('task_id', $taskIds)
+            ->where('student_id', $student->id)
             ->get()
-            ->map(function ($t) use ($student) {
-                $sub = TaskSubmission::where('task_id', $t->id)
-                                     ->where('student_id', $student->id)
-                                     ->first();
+            ->keyBy('task_id');
+
+        $tasks = $tasksQuery->map(function ($t) use ($submissions) {
+                $sub = $submissions->get($t->id);
                 return [
                     'id'          => $t->id,
                     'title'       => $t->title,
@@ -114,7 +119,7 @@ class StudentController extends Controller
     {
         $request->validate([
             'note'    => 'nullable|string|max:1000',
-            'files.*' => 'nullable|file|max:10240',
+            'files.*' => 'nullable|file|mimes:jpg,jpeg,png,pdf,doc,docx,zip|max:10240',
         ]);
 
         $student = $this->student();

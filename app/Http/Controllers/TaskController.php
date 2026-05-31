@@ -9,6 +9,7 @@ use App\Models\Point;
 use App\Models\Subject;
 use App\Models\Classes;   
 use App\Models\SchoolClass;
+use App\Models\ClassEnrollment;
 use App\Models\Student;
 use App\Models\User;
 use App\Models\Teacher;
@@ -70,6 +71,46 @@ class TaskController extends Controller
         Auth::logout();
         request()->session()->invalidate();
         request()->session()->regenerateToken();
+    }
+
+    /**
+     * Class IDs the authenticated student is enrolled in (school_classes).
+     */
+    private function studentEnrolledClassIds()
+    {
+        return ClassEnrollment::where('user_id', Auth::id())->pluck('class_id');
+    }
+
+    /**
+     * Whether the student can access a task via enrollment (or legacy class_id).
+     */
+    private function studentCanAccessTask(Task $task): bool
+    {
+        $classIds = $this->studentEnrolledClassIds();
+
+        if ($classIds->isEmpty()) {
+            $student = $this->student();
+            if ($student->class_id) {
+                $classIds = collect([$student->class_id]);
+            }
+        }
+
+        return TeacherSubject::where('id', $task->teacher_subject_id)
+            ->whereIn('class_id', $classIds)
+            ->exists();
+    }
+
+    /**
+     * Delete task images and attachments from the public disk.
+     */
+    private function deleteTaskFiles(Task $task): void
+    {
+        foreach ($task->images as $img) {
+            Storage::disk('public')->delete($img->path);
+        }
+        foreach ($task->attachments as $att) {
+            Storage::disk('public')->delete($att->path);
+        }
     }
 
     /**
@@ -169,12 +210,23 @@ class TaskController extends Controller
         if (str_starts_with($mime, 'image/')) {
             $image = null;
             if (extension_loaded('gd')) {
-                if ($mime == 'image/jpeg' || $mime == 'image/jpg') $image = @imagecreatefromjpeg($file->getRealPath());
-                elseif ($mime == 'image/png') $image = @imagecreatefrompng($file->getRealPath());
-                elseif ($mime == 'image/webp') $image = @imagecreatefromwebp($file->getRealPath());
+                $size = @getimagesize($file->getRealPath());
+                if ($size && $size[0] <= 4000 && $size[1] <= 4000) {
+                    if ($mime == 'image/jpeg' || $mime == 'image/jpg') $image = @imagecreatefromjpeg($file->getRealPath());
+                    elseif ($mime == 'image/png') $image = @imagecreatefrompng($file->getRealPath());
+                    elseif ($mime == 'image/webp') $image = @imagecreatefromwebp($file->getRealPath());
+                }
             }
 
             if ($image !== false && $image !== null) {
+                $fileName = \Illuminate\Support\Str::random(40) . '.jpg';
+                $path = $folder . '/' . $fileName;
+                $absolutePath = storage_path('app/public/' . $path);
+
+                if (!file_exists(dirname($absolutePath))) {
+                    mkdir(dirname($absolutePath), 0755, true);
+                }
+
                 imagejpeg($image, $absolutePath, 75);
                 imagedestroy($image);
                 @chmod($absolutePath, 0644);
@@ -254,7 +306,7 @@ class TaskController extends Controller
     {
         $student = $this->student();
 
-        $classIds = \App\Models\ClassEnrollment::where('student_id', Auth::id())->pluck('class_id');
+        $classIds = \App\Models\ClassEnrollment::where('user_id', Auth::id())->pluck('class_id');
 
         $totalTasks     = Task::whereHas('teacherSubject',
                               fn($q) => $q->whereIn('class_id', $classIds)
@@ -265,14 +317,20 @@ class TaskController extends Controller
                               ->whereIn('status', ['submitted', 'correcting', 'graded'])->count();
         $totalPoints    = Point::where('student_id', $student->id)->sum('point');
 
-        $recentTasks = Task::with(['teacherSubject.subject'])
+        $recentTasksQuery = Task::with(['teacherSubject.subject'])
             ->whereHas('teacherSubject', fn($q) => $q->whereIn('class_id', $classIds))
             ->latest()
             ->limit(5)
+            ->get();
+
+        $taskIds = $recentTasksQuery->pluck('id');
+        $submissions = TaskSubmission::whereIn('task_id', $taskIds)
+            ->where('student_id', $student->id)
             ->get()
-            ->map(function ($t) use ($student) {
-                $sub = TaskSubmission::where('task_id', $t->id)
-                                     ->where('student_id', $student->id)->first();
+            ->keyBy('task_id');
+
+        $recentTasks = $recentTasksQuery->map(function ($t) use ($submissions) {
+                $sub = $submissions->get($t->id);
                 return [
                     'title'   => $t->title,
                     'subject' => $t->teacherSubject->subject?->name ?? '--',
@@ -363,11 +421,11 @@ class TaskController extends Controller
             'due_date'    => $task->due_date,
             'max_grade'   => $task->max_grade,
             'images'      => $task->images->map(fn($i) => [
-                'url'  => Storage::url($i->path),
+                'url'  => Storage::disk('public')->url($i->path),
                 'name' => $i->original_name ?? basename($i->path),
             ]),
             'attachments' => $task->attachments->map(fn($a) => [
-                'url'  => Storage::url($a->path),
+                'url'  => Storage::disk('public')->url($a->path),
                 'name' => $a->original_name ?? basename($a->path),
             ]),
             'my_submission' => $submission ? [
@@ -376,7 +434,7 @@ class TaskController extends Controller
                 'feedback' => $submission->feedback,
                 'notes'    => $submission->note,
                 'files'    => $submission->files()->get()->map(fn($f) => [
-                    'url'  => Storage::url($f->path),
+                    'url'  => Storage::disk('public')->url($f->path),
                     'name' => $f->original_name ?? basename($f->path),
                 ]),
             ] : null,
@@ -448,7 +506,7 @@ class TaskController extends Controller
             'description'        => 'nullable|string',
             'due_date'           => 'nullable|date',
             'max_grade'          => 'nullable|integer|min:1|max:10000',
-            'files.*'            => 'nullable|file|max:10240',
+            'files.*'            => 'nullable|file|mimes:jpg,jpeg,png,pdf,doc,docx,zip|max:10240',
         ]);
 
         $this->authorizeTeacherSubject($validated['teacher_subject_id']);
@@ -458,7 +516,7 @@ class TaskController extends Controller
             'title'              => $validated['title'],
             'description'        => $validated['description'] ?? null,
             'due_date'           => $validated['due_date']     ?? null,
-            'max_grade'          => 100,
+            'max_grade'          => $validated['max_grade']    ?? 100,
         ]);
 
         $this->handleTaskFiles($task, $request);
@@ -485,7 +543,7 @@ class TaskController extends Controller
             'description'        => 'nullable|string',
             'due_date'           => 'nullable|date',
             'max_grade'          => 'sometimes|integer|min:1|max:10000',
-            'files.*'            => 'nullable|file|max:10240',
+            'files.*'            => 'nullable|file|mimes:jpg,jpeg,png,pdf,doc,docx,zip|max:10240',
         ]);
 
         if (isset($validated['teacher_subject_id'])) {
@@ -497,7 +555,7 @@ class TaskController extends Controller
             'title'              => $validated['title']               ?? $task->title,
             'description'        => $validated['description']         ?? $task->description,
             'due_date'           => $validated['due_date']            ?? $task->due_date,
-            'max_grade'          => 100,
+            'max_grade'          => $validated['max_grade']           ?? $task->max_grade,
         ]);
 
         $this->handleTaskFiles($task, $request);
@@ -517,8 +575,7 @@ class TaskController extends Controller
     {
         $this->authorizeTask($task);
 
-        foreach ($task->images      as $img) Storage::delete($img->path);
-        foreach ($task->attachments as $att) Storage::delete($att->path);
+        $this->deleteTaskFiles($task);
 
         $task->delete();
 
@@ -567,7 +624,7 @@ class TaskController extends Controller
             'feedback'     => $s->feedback,
             'note'         => $s->note,
             'files'        => $s->files->map(fn($f) => [
-                'url'  => Storage::url($f->path),
+                'url'  => Storage::disk('public')->url($f->path),
                 'name' => $f->original_name ?? basename($f->path),
             ]),
             'submitted_at' => $s->submitted_at,
@@ -696,7 +753,7 @@ class TaskController extends Controller
                 'subject_name'   => $ts->subject?->name ?? '--',
                 'class_name'     => $ts->class?->name   ?? '--',
                 'tasks_count'    => $ts->tasks_count,
-                'students_count' => Student::where('class_id', $ts->class_id)->count(),
+                'students_count' => ClassEnrollment::where('class_id', $ts->class_id)->count(),
             ]);
 
         return response()->json($subjects);
@@ -729,7 +786,7 @@ class TaskController extends Controller
     {
         $request->validate([
             'subject_id' => 'required|integer|exists:subjects,id',
-            'class_id'   => 'required|integer|exists:classes,id',
+            'class_id'   => 'required|integer|exists:school_classes,id',
         ]);
 
         $teacher = $this->teacher();
@@ -818,6 +875,33 @@ class TaskController extends Controller
         return response()->json(compact('total', 'awarded', 'deducted'));
     }
 
+    /**
+     * POST /teacher/points
+     */
+    public function teacherPointsStore(Request $request): JsonResponse
+    {
+        $request->validate([
+            'student_id'         => 'required|exists:students,id',
+            'teacher_subject_id' => 'required|exists:teacher_subjects,id',
+            'point'              => 'required|numeric',
+            'description'        => 'nullable|string',
+            'point_date'         => 'nullable|date',
+        ]);
+
+        $this->authorizeTeacherSubject((int) $request->teacher_subject_id);
+
+        $point = Point::create([
+            'student_id'         => $request->student_id,
+            'teacher_subject_id' => $request->teacher_subject_id,
+            'point'              => $request->point,
+            'description'        => $request->description,
+            'point_date'         => $request->point_date ?? today()->toDateString(),
+            'type'               => $request->point >= 0 ? 'positive' : 'negative',
+        ]);
+
+        return response()->json($point, 201);
+    }
+
     /** 
      * GET /teacher/report?period=week|month|all&ts_id= 
      * 
@@ -861,7 +945,7 @@ class TaskController extends Controller
             return [
                 'class_name'      => $ts->class?->name   ?? '--',
                 'subject_name'    => $ts->subject?->name ?? '--',
-                'total_students'  => Student::where('class_id', $ts->class_id)->count(),
+                'total_students'  => ClassEnrollment::where('class_id', $ts->class_id)->count(),
                 'submitted_count' => (clone $sq)->whereIn('status', ['submitted', 'correcting', 'graded'])->count(),
                 'graded_count'    => (clone $sq)->where('status', 'graded')->count(),
                 'avg_grade'       => (clone $sq)->where('status', 'graded')->avg('grade'),
@@ -900,8 +984,10 @@ class TaskController extends Controller
         $graded    = TaskSubmission::where('student_id', $student->id)->where('status', 'graded')->count();
         $totalPts  = Point::where('student_id', $student->id)->sum('point');
 
+        $classIds = $this->studentEnrolledClassIds();
+
         $upcoming = Task::with(['teacherSubject.subject'])
-            ->whereHas('teacherSubject', fn($q) => $q->where('class_id', $student->class_id))
+            ->whereHas('teacherSubject', fn($q) => $q->whereIn('class_id', $classIds))
             ->where(fn($q) => $q->whereNull('due_date')->orWhere('due_date', '>=', today()))
             ->orderBy('due_date')
             ->limit(6)
@@ -954,11 +1040,16 @@ class TaskController extends Controller
     {
         $student = $this->student();
 
-        $classIds = \App\Models\ClassEnrollment::where('student_id', Auth::id())->pluck('class_id');
+        $classIds = $this->studentEnrolledClassIds();
 
-        $tasks = Task::with(['teacherSubject.subject', 'teacherSubject.teacher.user'])
-            ->whereHas('teacherSubject', fn($q) => $q->whereIn('class_id', $classIds))
-            ->latest()
+        $query = Task::with(['teacherSubject.subject', 'teacherSubject.teacher.user'])
+            ->whereHas('teacherSubject', fn($q) => $q->whereIn('class_id', $classIds));
+
+        if ($request->filled('subject_id')) {
+            $query->whereHas('teacherSubject', fn($q) => $q->where('subject_id', $request->subject_id));
+        }
+
+        $tasks = $query->latest()
             ->get()
             ->map(function ($t) use ($student) {
                 $sub = TaskSubmission::where('task_id', $t->id)
@@ -985,7 +1076,15 @@ class TaskController extends Controller
             )->values();
         }
 
-        return response()->json($tasks);
+        $subjects = Subject::whereIn(
+            'id',
+            TeacherSubject::whereIn('class_id', $classIds)->pluck('subject_id')->unique()
+        )->orderBy('name')->get(['id', 'name']);
+
+        return response()->json([
+            'tasks'    => $tasks,
+            'subjects' => $subjects,
+        ]);
     }
 
     /** 
@@ -1034,10 +1133,7 @@ class TaskController extends Controller
             return response()->json(['message' => 'This task is past its due date.'], 422);
         }
 
-        $belongs = TeacherSubject::where('id', $task->teacher_subject_id)
-                                  ->where('class_id', $student->class_id)
-                                  ->exists();
-        if (!$belongs) {
+        if (!$this->studentCanAccessTask($task)) {
             return response()->json(['message' => 'This task is not for your class.'], 403);
         }
 
@@ -1074,10 +1170,19 @@ class TaskController extends Controller
         ]);
 
         $student    = $this->student();
+
+        if (!$this->studentCanAccessTask($task)) {
+            return response()->json(['message' => 'This task is not for your class.'], 403);
+        }
+
         $submission = TaskSubmission::firstOrCreate(
             ['task_id' => $task->id, 'student_id' => $student->id],
             ['status' => 'taken']
         );
+
+        if (in_array($submission->status, ['submitted', 'correcting', 'graded'], true)) {
+            return response()->json(['message' => 'This task has already been submitted.'], 422);
+        }
 
         if ($request->hasFile('files')) {
             foreach ($request->file('files') as $file) {
@@ -1158,7 +1263,12 @@ class TaskController extends Controller
 
         $from = $request->period === 'all' ? null : now()->startOfMonth();
 
-        $tsIds = TeacherSubject::where('class_id', $student->class_id)->pluck('id');
+        $classIds = $this->studentEnrolledClassIds();
+        if ($classIds->isEmpty() && $student->class_id) {
+            $classIds = collect([$student->class_id]);
+        }
+
+        $tsIds = TeacherSubject::whereIn('class_id', $classIds)->pluck('id');
 
         $taskIds = Task::whereIn('teacher_subject_id', $tsIds)
             ->when($from, fn($q) => $q->where('created_at', '>=', $from))
@@ -1400,7 +1510,7 @@ class TaskController extends Controller
         $request->validate([
             'teacher_id' => 'required|integer|exists:teachers,id',
             'subject_id' => 'required|integer|exists:subjects,id',
-            'class_id'   => 'required|integer|exists:classes,id',
+            'class_id'   => 'required|integer|exists:school_classes,id',
         ]);
 
         $exists = TeacherSubject::where('teacher_id', $request->teacher_id)
@@ -1427,7 +1537,7 @@ class TaskController extends Controller
         $request->validate([
             'teacher_id' => 'required|integer|exists:teachers,id',
             'subject_id' => 'required|integer|exists:subjects,id',
-            'class_id'   => 'required|integer|exists:classes,id',
+            'class_id'   => 'required|integer|exists:school_classes,id',
         ]);
 
         $ts->update([
@@ -1467,13 +1577,19 @@ class TaskController extends Controller
             'description'        => 'nullable|string',
             'teacher_subject_id' => 'required|exists:teacher_subjects,id',
             'due_date'           => 'nullable|date',
-            'max_grade'          => 'nullable|integer|min:1',
+            'max_grade'          => 'nullable|integer|min:1|max:10000',
+            'files.*'            => 'nullable|file|max:10240',
         ]);
 
-        $task = Task::create(array_merge(
-            $request->only('title', 'description', 'teacher_subject_id', 'due_date'),
-            ['max_grade' => 100]
-        ));
+        $task = Task::create([
+            'title'              => $request->title,
+            'description'        => $request->description,
+            'teacher_subject_id' => $request->teacher_subject_id,
+            'due_date'           => $request->due_date,
+            'max_grade'          => $request->max_grade ?? 100,
+        ]);
+
+        $this->handleTaskFiles($task, $request);
 
         return response()->json($task->load(['teacherSubject.subject', 'teacherSubject.class']), 201);
     }
@@ -1481,18 +1597,24 @@ class TaskController extends Controller
     /** PUT /admin/tasks/{task} */
     public function adminTasksUpdate(Request $request, Task $task)
     {
-        $request->validate([
+        $validated = $request->validate([
             'title'              => 'sometimes|string|max:150',
             'description'        => 'nullable|string',
             'teacher_subject_id' => 'sometimes|exists:teacher_subjects,id',
             'due_date'           => 'nullable|date',
-            'max_grade'          => 'nullable|integer|min:1',
+            'max_grade'          => 'nullable|integer|min:1|max:10000',
+            'files.*'            => 'nullable|file|max:10240',
         ]);
 
-        $task->update(array_merge(
-            $request->only('title', 'description', 'teacher_subject_id', 'due_date'),
-            ['max_grade' => 100]
-        ));
+        $task->update([
+            'title'              => $validated['title']               ?? $task->title,
+            'description'        => $validated['description']         ?? $task->description,
+            'teacher_subject_id' => $validated['teacher_subject_id'] ?? $task->teacher_subject_id,
+            'due_date'           => $validated['due_date']            ?? $task->due_date,
+            'max_grade'          => $validated['max_grade']           ?? $task->max_grade,
+        ]);
+
+        $this->handleTaskFiles($task, $request);
 
         return response()->json($task->load(['teacherSubject.subject', 'teacherSubject.class']));
     }
@@ -1500,8 +1622,7 @@ class TaskController extends Controller
     /** DELETE /admin/tasks/{task} */
     public function adminTasksDestroy(Task $task)
     {
-        foreach ($task->images      as $img) Storage::delete($img->path);
-        foreach ($task->attachments as $att) Storage::delete($att->path);
+        $this->deleteTaskFiles($task);
         $task->delete();
 
         return response()->json(['message' => 'Task deleted.']);
@@ -1557,13 +1678,24 @@ class TaskController extends Controller
     /** GET /admin/students-for-points */
     public function adminStudentsForPoints()
     {
-        $students = \App\Models\Student::with(['user', 'class'])
-            ->get()
-            ->map(fn($s) => [
+        $students = Student::with('user')->get()->map(function ($s) {
+            $classNames = ClassEnrollment::where('user_id', $s->user_id)
+                ->with('class')
+                ->get()
+                ->pluck('class.name')
+                ->filter()
+                ->implode(', ');
+
+            if ($classNames === '' && $s->class) {
+                $classNames = $s->class->name;
+            }
+
+            return [
                 'id'    => $s->id,
-                'name'  => $s->user?->name  ?? '--',
-                'class' => $s->class?->name ?? '--',
-            ]);
+                'name'  => $s->user?->name ?? '--',
+                'class' => $classNames ?: '--',
+            ];
+        });
 
         return response()->json($students);
     }
@@ -1577,8 +1709,10 @@ class TaskController extends Controller
 
         if ($request->filled('search')) {
             $s = $request->search;
-            $query->whereHas('student.user', fn($q) => $q->where('name', 'like', "%$s%"))
+            $query->where(function ($q) use ($s) {
+                $q->whereHas('student.user', fn($q) => $q->where('name', 'like', "%$s%"))
                   ->orWhereHas('teacherSubject.teacher.user', fn($q) => $q->where('name', 'like', "%$s%"));
+            });
         }
         if ($request->type === 'positive') $query->where('point', '>', 0);
         if ($request->type === 'negative') $query->where('point', '<', 0);

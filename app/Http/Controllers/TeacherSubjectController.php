@@ -4,10 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\TeacherSubject;
 use App\Models\Subject;
-use App\Models\Classes;
+use App\Models\SchoolClass;
+use App\Models\ClassEnrollment;
 use App\Models\Teacher;
 use App\Models\User;
-use App\Models\Student;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -23,7 +23,7 @@ class TeacherSubjectController extends Controller
             ->values();
 
         $subjects = Subject::orderBy('name')->get(['id', 'name']);
-        $classes  = Classes::orderBy('name')->get(['id', 'name']);
+        $classes  = SchoolClass::orderBy('name')->get(['id', 'name']);
 
         return response()->json(compact('teachers', 'subjects', 'classes'));
     }
@@ -44,7 +44,7 @@ class TeacherSubjectController extends Controller
         $validated = $request->validate([
             'teacher_id' => 'required|integer|exists:teachers,id',
             'subject_id' => 'required|integer|exists:subjects,id',
-            'class_id'   => 'required|integer|exists:classes,id',
+            'class_id'   => 'required|integer|exists:school_classes,id',
         ]);
 
         if (TeacherSubject::where($validated)->exists()) {
@@ -63,7 +63,7 @@ class TeacherSubjectController extends Controller
         $validated = $request->validate([
             'teacher_id' => 'required|integer|exists:teachers,id',
             'subject_id' => 'required|integer|exists:subjects,id',
-            'class_id'   => 'required|integer|exists:classes,id',
+            'class_id'   => 'required|integer|exists:school_classes,id',
         ]);
 
         if (TeacherSubject::where($validated)->where('id', '!=', $ts->id)->exists()) {
@@ -94,7 +94,7 @@ class TeacherSubjectController extends Controller
     public function teacherCreate()
     {
         $subjects = Subject::orderBy('name')->get(['id', 'name']);
-        $classes  = Classes::orderBy('name')->get(['id', 'name']);
+        $classes  = SchoolClass::orderBy('name')->get(['id', 'name']);
 
         return response()->json(compact('subjects', 'classes'));
     }
@@ -113,7 +113,7 @@ class TeacherSubjectController extends Controller
                 'subject_name'   => $ts->subject->name ?? '--',
                 'class_name'     => $ts->class->name   ?? '--',
                 'tasks_count'    => $ts->tasks_count,
-                'students_count' => Student::where('class_id', $ts->class_id)->count(),
+                'students_count' => ClassEnrollment::where('class_id', $ts->class_id)->count(),
             ]);
 
         return response()->json($subjects);
@@ -124,7 +124,7 @@ class TeacherSubjectController extends Controller
     {
         $request->validate([
             'subject_id' => 'required|integer|exists:subjects,id',
-            'class_id'   => 'required|integer|exists:classes,id',
+            'class_id'   => 'required|integer|exists:school_classes,id',
         ]);
 
         $teacher = Auth::user()->teacher;

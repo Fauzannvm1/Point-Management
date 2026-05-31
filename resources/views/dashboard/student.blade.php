@@ -1141,7 +1141,17 @@ function formatDateShort(d) { return d ? new Date(d).toLocaleDateString('en-US',
 async function apiFetch(url, opts = {}) {
   const res  = await fetch(url, { ...opts, headers: { 'X-Requested-With':'XMLHttpRequest', 'Accept':'application/json', 'X-CSRF-TOKEN':CSRF, ...(opts.headers||{}) } });
   const text = await res.text();
-  try { return { ok: res.ok, data: JSON.parse(text) }; } catch { return { ok: false, data: {} }; }
+  try {
+    const data = JSON.parse(text);
+    if (!res.ok && !data.message && data.errors) {
+      const first = Object.values(data.errors)[0];
+      data.message = Array.isArray(first) ? first[0] : first;
+    }
+    return { ok: res.ok, status: res.status, data };
+  } catch {
+    const message = res.status === 419 ? 'Session expired. Please refresh the page.' : `Request failed (${res.status}).`;
+    return { ok: false, status: res.status, data: { message } };
+  }
 }
 
 // Initial dashboard hydration
@@ -1439,7 +1449,7 @@ async function loadTasks() {
   if (status) params.append('status', status);
 
   const { ok, data } = await apiFetch(`/student/tasks?${params}`);
-  if (!ok) return;
+  if (!ok) { alert(data.message || 'Could not load tasks.'); return; }
 
   allTasks = data.tasks || data;
 
@@ -1461,7 +1471,7 @@ function renderTasks() {
 
   tbody.innerHTML = allTasks.map(t => {
     const expired   = t.due_date && new Date(t.due_date) < new Date();
-    const canSubmit = t.my_status === 'taken';
+    const canSubmit = !['submitted', 'correcting', 'graded'].includes(t.my_status);
     const actionBtn = canSubmit
       ? `<button onclick="openSubmitModal(${t.id},'${(t.title||'').replace(/'/g,"\\'")}','${t.subject||''}','${formatDateShort(t.due_date)}')" class="btn-primary" style="padding:4px 10px;font-size:11px">Submit</button>`
       : `<button onclick="viewTaskDetail(${t.id})" class="btn-edit" style="font-size:11px">View</button>`;
@@ -1530,7 +1540,7 @@ async function viewTaskDetail(id) {
     mySubWrap.style.display = 'none';
   }
 
-  const canSubmit = !data.my_submission || data.my_submission.status === 'taken';
+  const canSubmit = !data.my_submission || !['submitted', 'correcting', 'graded'].includes(data.my_submission.status);
   document.getElementById('dtSubmitBtn').style.display = canSubmit ? 'flex' : 'none';
   openModal('mDetail');
 }
@@ -1640,7 +1650,7 @@ async function loadReport() {
   params.append('period', period);
 
   const { ok, data } = await apiFetch(`/student/report?${params}`);
-  if (!ok) return;
+  if (!ok) { alert(data.message || 'Could not load report.'); return; }
 
   document.getElementById('rTasks').textContent     = data.summary?.tasks     ?? '--';
   document.getElementById('rSubmitted').textContent = data.summary?.submitted ?? '--';

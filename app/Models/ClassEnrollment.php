@@ -9,7 +9,7 @@ class ClassEnrollment extends Model
 {
     protected $fillable = [
         'class_id',
-        'student_id',
+        'user_id',
     ];
 
     // Relationships 
@@ -19,8 +19,8 @@ class ClassEnrollment extends Model
         return $this->belongsTo(SchoolClass::class, 'class_id');
     }
 
-    public function student(): BelongsTo
+    public function user(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'student_id');
+        return $this->belongsTo(User::class, 'user_id');
     }
 }

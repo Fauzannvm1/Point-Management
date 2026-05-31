@@ -43,8 +43,4 @@ class Task extends Model
     {
         return $this->hasMany(TaskAttachment::class);
     }
-    public function files()
-    {
-        return $this->hasMany(SubmissionFile::class);
-    }
 }

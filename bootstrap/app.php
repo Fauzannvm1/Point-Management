@@ -22,4 +22,7 @@ return Application::configure(basePath: dirname(__DIR__))
 if (config('app.env') === 'production') {
     URL::forceScheme('https');
 }
-URL::forceRootUrl(env('APP_URL', 'https://point-management.online'));
+
+if ($appUrl = config('app.url')) {
+    URL::forceRootUrl($appUrl);
+}

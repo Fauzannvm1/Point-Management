@@ -6,7 +6,7 @@ use App\Models\Point;
 use App\Models\Task;
 use App\Models\TaskSubmission;
 use App\Models\TeacherSubject;
-use App\Models\Student;
+use App\Models\ClassEnrollment;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -105,7 +105,7 @@ class ReportController extends Controller
             return [
                 'class_name'      => $ts->class->name   ?? '--',
                 'subject_name'    => $ts->subject->name ?? '--',
-                'total_students'  => Student::where('class_id', $ts->class_id)->count(),
+                'total_students'  => ClassEnrollment::where('class_id', $ts->class_id)->count(),
                 'submitted_count' => (clone $sq)->whereIn('status', ['submitted', 'correcting', 'graded'])->count(),
                 'graded_count'    => (clone $sq)->where('status', 'graded')->count(),
                 'avg_grade'       => (clone $sq)->where('status', 'graded')->avg('grade'),

@@ -124,16 +124,18 @@ class ClassController extends Controller
     {
         $class = SchoolClass::findOrFail($id);
 
-        // Manually delete related enrollments and teacher_subjects to prevent constraint errors
-        \App\Models\ClassEnrollment::where('class_id', $id)->delete();
-        
-        $teacherSubjects = \App\Models\TeacherSubject::where('class_id', $id)->get();
-        foreach ($teacherSubjects as $ts) {
-            $ts->tasks()->delete();
-            $ts->delete();
-        }
+        \Illuminate\Support\Facades\DB::transaction(function () use ($id, $class) {
+            // Manually delete related enrollments and teacher_subjects to prevent constraint errors
+            \App\Models\ClassEnrollment::where('class_id', $id)->delete();
+            
+            $teacherSubjects = \App\Models\TeacherSubject::where('class_id', $id)->get();
+            foreach ($teacherSubjects as $ts) {
+                $ts->tasks()->delete();
+                $ts->delete();
+            }
 
-        $class->delete();
+            $class->delete();
+        });
 
         return response()->json(['message' => 'Class deleted successfully.']);
     }
@@ -156,15 +158,15 @@ class ClassController extends Controller
      */
     public function adminAddStudent(Request $request, int $id): JsonResponse
     {
-        $request->validate(['student_id' => ['required', 'exists:users,id']]);
+        $request->validate(['user_id' => ['required', 'exists:users,id']]);
 
         $class = SchoolClass::findOrFail($id);
 
-        if (ClassEnrollment::where('class_id', $class->id)->where('student_id', $request->student_id)->exists()) {
+        if (ClassEnrollment::where('class_id', $class->id)->where('user_id', $request->user_id)->exists()) {
             return response()->json(['message' => 'Student is already enrolled.'], 422);
         }
 
-        ClassEnrollment::create(['class_id' => $class->id, 'student_id' => $request->student_id]);
+        ClassEnrollment::create(['class_id' => $class->id, 'user_id' => $request->user_id]);
 
         return response()->json(['message' => 'Student enrolled successfully.'], 201);
     }
@@ -176,7 +178,7 @@ class ClassController extends Controller
     public function adminRemoveStudent(int $classId, int $studentId): JsonResponse
     {
         $deleted = ClassEnrollment::where('class_id', $classId)
-            ->where('student_id', $studentId)
+            ->where('user_id', $studentId)
             ->delete();
 
         if (! $deleted) {
@@ -328,7 +330,7 @@ class ClassController extends Controller
         $this->findTeacherClass($classId); // ownership check
 
         $deleted = ClassEnrollment::where('class_id', $classId)
-            ->where('student_id', $studentId)
+            ->where('user_id', $studentId)
             ->delete();
 
         if (! $deleted) {
@@ -512,7 +514,7 @@ class ClassController extends Controller
     {
         $classes = SchoolClass::query()
             ->join('class_enrollments', 'class_enrollments.class_id', '=', 'school_classes.id')
-            ->where('class_enrollments.student_id', Auth::id())
+            ->where('class_enrollments.user_id', Auth::id())
             ->with(['teacher:id,name', 'subject:id,name'])
             ->withCount([
                 'tasks as total_tasks',
@@ -554,11 +556,11 @@ class ClassController extends Controller
             return response()->json(['message' => 'Class not found. Please check the code and try again.'], 404);
         }
 
-        if (ClassEnrollment::where('class_id', $class->id)->where('student_id', Auth::id())->exists()) {
+        if (ClassEnrollment::where('class_id', $class->id)->where('user_id', Auth::id())->exists()) {
             return response()->json(['message' => 'You are already enrolled in this class.'], 422);
         }
 
-        ClassEnrollment::create(['class_id' => $class->id, 'student_id' => Auth::id()]);
+        ClassEnrollment::create(['class_id' => $class->id, 'user_id' => Auth::id()]);
 
         return response()->json([
             'message' => 'Successfully joined the class.',
@@ -579,7 +581,7 @@ class ClassController extends Controller
     public function studentLeave(int $id): JsonResponse
     {
         $deleted = ClassEnrollment::where('class_id', $id)
-            ->where('student_id', Auth::id())
+            ->where('user_id', Auth::id())
             ->delete();
 
         if (! $deleted) {

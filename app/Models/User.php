@@ -20,6 +20,7 @@ class User extends Authenticatable
      */
     protected $fillable = [
         'name',
+        'username',
         'email',
         'password',
         'role',
@@ -85,10 +86,10 @@ class User extends Authenticatable
         return $this->receivedPoints()->sum('point');
     }
     
-    // Points received as a student
+    // Points received as a student (via students.id, not users.id)
     public function receivedPoints()
     {
-        return $this->hasMany(Point::class, 'student_id');
+        return $this->hasManyThrough(Point::class, Student::class, 'user_id', 'student_id');
     }
 
     // Parent → children (through parent_student pivot)

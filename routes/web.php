@@ -49,7 +49,7 @@ Route::middleware('auth')->group(function () {
         // Tasks
         Route::get('/admin/tasks', [TaskController::class, 'adminTasksIndex']);
         Route::post('/admin/tasks', [TaskController::class, 'adminTasksStore']);
-        Route::put('/admin/tasks/{task}', [TaskController::class, 'adminTasksUpdate']);
+        Route::match(['post', 'put'], '/admin/tasks/{task}', [TaskController::class, 'adminTasksUpdate']);
         Route::delete('/admin/tasks/{task}', [TaskController::class, 'adminTasksDestroy']);
         Route::get('/admin/tasks/{task}/submissions', [TaskController::class, 'adminTaskSubmissions']);
 
@@ -134,6 +134,9 @@ Route::middleware('auth')->group(function () {
         // Points
         Route::get('/points', [TaskController::class, 'studentPoints']);
         Route::get('/points/stats', [TaskController::class, 'studentPointStats']);
+
+        // Report
+        Route::get('/report', [TaskController::class, 'studentReport']);
 
         // Class
         Route::get('classes', [ClassController::class, 'studentIndex'])->name('classes.index');

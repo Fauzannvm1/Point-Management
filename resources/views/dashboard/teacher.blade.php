@@ -1133,7 +1133,17 @@ function formatDateShort(d) { return d ? new Date(d).toLocaleDateString('en-US',
 async function apiFetch(url, opts={}) {
   const res  = await fetch(url, {...opts, headers:{'X-Requested-With':'XMLHttpRequest','Accept':'application/json','X-CSRF-TOKEN':CSRF,...(opts.headers||{})}});
   const text = await res.text();
-  try { return {ok:res.ok, data:JSON.parse(text)}; } catch { return {ok:false, data:{}}; }
+  try {
+    const data = JSON.parse(text);
+    if (!res.ok && !data.message && data.errors) {
+      const first = Object.values(data.errors)[0];
+      data.message = Array.isArray(first) ? first[0] : first;
+    }
+    return {ok:res.ok, status:res.status, data};
+  } catch {
+    const message = res.status === 419 ? 'Session expired. Please refresh the page.' : `Request failed (${res.status}).`;
+    return {ok:false, status:res.status, data:{message}};
+  }
 }
 
 function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('ov').classList.toggle('on'); }
@@ -1517,6 +1527,8 @@ async function saveTask() {
   fd.append('title',title); fd.append('description',document.getElementById('tDesc').value.trim());
   fd.append('teacher_subject_id',ts);
   if(document.getElementById('tDue').value) fd.append('due_date',document.getElementById('tDue').value);
+  const maxGrade = document.getElementById('tGrade').value;
+  if (maxGrade) fd.append('max_grade', maxGrade);
   pendingFiles.forEach((f,i)=>fd.append(`files[${i}]`,f));
   if(editTaskId) fd.append('_method','PUT');
   const {ok,data}=await apiFetch(editTaskId?`/teacher/tasks/${editTaskId}`:'/teacher/tasks',{method:'POST',body:fd});
@@ -1822,7 +1834,7 @@ let pendingDelete=null;
 function askDelete(type,id,name) { pendingDelete={type,id}; document.getElementById('delMsg').textContent=`Delete "${name}"? This cannot be undone.`; openModal('mDel'); }
 async function confirmDelete() {
   if(!pendingDelete) return;
-  const urls={task:`/teacher/tasks/${pendingDelete.id}`,subj:`/teacher/subjects/${pendingDelete.id}`,class:`/admin/classes/${pendingDelete.id}`};
+  const urls={task:`/teacher/tasks/${pendingDelete.id}`,subj:`/teacher/subjects/${pendingDelete.id}`,class:`/teacher/classes/${pendingDelete.id}`};
   const {ok,data}=await apiFetch(urls[pendingDelete.type],{method:'DELETE'});
   closeModal('mDel');
   if(ok){

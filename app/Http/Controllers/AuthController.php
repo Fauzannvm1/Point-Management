@@ -193,7 +193,7 @@ class AuthController extends Controller
                           ->map(fn($s) => [
                               'student' => $s->student->user->name                 ?? '—',
                               'task'    => $s->task->title                         ?? '—',
-                              'subject' => $s->task->teacherSubject->subject->name ?? '—',
+                              'subject' => $s->task->teacherSubject->subject?->name ?? '—',
                               'status'  => $s->status,
                               'grade'   => $s->grade,
                               'date'    => $s->updated_at->format('Y-m-d'),
@@ -231,7 +231,7 @@ class AuthController extends Controller
             return redirect()->route('login')->with('error', 'Student profile not found. Please contact an administrator.');
         }
 
-        $classIds = \App\Models\ClassEnrollment::where('student_id', Auth::id())->pluck('class_id');
+        $classIds = \App\Models\ClassEnrollment::where('user_id', Auth::id())->pluck('class_id');
         $classNames = \App\Models\SchoolClass::whereIn('id', $classIds)->pluck('name')->implode(', ');
 
         // Stat cards
@@ -242,21 +242,26 @@ class AuthController extends Controller
         $totalPts  = Point::where('student_id', $student->id)->sum('point');
 
         // Recent tasks for student's classes (including past tasks)
-        $upcoming = Task::with(['teacherSubject.subject'])
+        $upcomingTasks = Task::with(['teacherSubject.subject'])
             ->whereHas('teacherSubject', fn($q) =>
                 $q->whereIn('class_id', $classIds)
             )
             ->latest()
             ->limit(6)
+            ->get();
+
+        $taskIds = $upcomingTasks->pluck('id');
+        $submissions = TaskSubmission::whereIn('task_id', $taskIds)
+            ->where('student_id', $student->id)
             ->get()
-            ->map(function ($t) use ($student) {
-                $sub = TaskSubmission::where('task_id', $t->id)
-                                    ->where('student_id', $student->id)
-                                    ->first();
+            ->keyBy('task_id');
+
+        $upcoming = $upcomingTasks->map(function ($t) use ($submissions) {
+                $sub = $submissions->get($t->id);
                 return [
                     'id'        => $t->id,
                     'title'     => $t->title,
-                    'subject'   => $t->teacherSubject->subject->name ?? '--',
+                    'subject'   => $t->teacherSubject->subject?->name ?? '--',
                     'due_date'  => $t->due_date,
                     'my_status' => $sub ? $sub->status : 'available',
                 ];
@@ -269,7 +274,7 @@ class AuthController extends Controller
             ->limit(5)
             ->get()
             ->map(fn($p) => [
-                'subject'     => $p->teacherSubject->subject->name ?? '--',
+                'subject'     => $p->teacherSubject->subject?->name ?? '--',
                 'description' => $p->description,
                 'points'      => $p->point,
                 'date'        => $p->point_date,
@@ -338,27 +343,32 @@ class AuthController extends Controller
             'username' => 'required|string|max:15',
             'email'    => 'required|string|email|max:225|unique:users',
             'password' => 'required|string|min:6|confirmed',
-            'role'     => 'required|in:admin,teacher,student,parent',
+            // 'role'     => 'required|in:admin,teacher,student,parent',
+            'role'     => 'required|in:teacher,student,parent', //production mode
         ]);
 
         if ($validator->fails()) {
             return redirect()->back()->withErrors($validator)->withInput();
         }
 
-        $user = User::create([
-            'name'     => $request->name,
-            'username' => $request->username,
-            'email'    => $request->email,
-            'password' => Hash::make($request->password),
-            'role'     => $request->role,
-        ]);
+        $user = \Illuminate\Support\Facades\DB::transaction(function () use ($request) {
+            $user = User::create([
+                'name'     => $request->name,
+                'username' => $request->username,
+                'email'    => $request->email,
+                'password' => Hash::make($request->password),
+                'role'     => $request->role,
+            ]);
 
-        match ($request->role) {
-            'teacher' => \App\Models\Teacher::create(['user_id' => $user->id]),
-            'student' => \App\Models\Student::create(['user_id' => $user->id]),
-            'parent'  => \App\Models\Parents::create(['user_id' => $user->id]),
-            default => null,
-        };
+            match ($request->role) {
+                'teacher' => \App\Models\Teacher::create(['user_id' => $user->id]),
+                'student' => \App\Models\Student::create(['user_id' => $user->id]),
+                'parent'  => \App\Models\Parents::create(['user_id' => $user->id]),
+                default => null,
+            };
+
+            return $user;
+        });
 
         Auth::login($user);
         return redirect('/dashboard')->with('success', 'Akun berhasil dibuat.');
@@ -439,21 +449,25 @@ class AuthController extends Controller
             'password' => 'required|string|min:6',
         ]);
 
-        $user = User::create([
-            'name'     => $validated['name'],
-            'email'    => $validated['email'],
-            'role'     => $validated['role'],
-            'password' => Hash::make($validated['password']),
-        ]);
+        $user = \Illuminate\Support\Facades\DB::transaction(function () use ($validated) {
+            $user = User::create([
+                'name'     => $validated['name'],
+                'email'    => $validated['email'],
+                'role'     => $validated['role'],
+                'password' => Hash::make($validated['password']),
+            ]);
 
-        // Auto-create profile record based on role
-        if ($user->role === 'teacher') {
-            Teacher::create(['user_id' => $user->id]);
-        } elseif ($user->role === 'student') {
-            Student::create(['user_id' => $user->id]);
-        } elseif ($user->role === 'parent') {
-            Parents::create(['user_id' => $user->id]);
-        }
+            // Auto-create profile record based on role
+            if ($user->role === 'teacher') {
+                Teacher::create(['user_id' => $user->id]);
+            } elseif ($user->role === 'student') {
+                Student::create(['user_id' => $user->id]);
+            } elseif ($user->role === 'parent') {
+                Parents::create(['user_id' => $user->id]);
+            }
+
+            return $user;
+        });
 
         return response()->json($user, 201);
     }
@@ -622,7 +636,7 @@ class AuthController extends Controller
         $validated = $request->validate([
             'teacher_id' => 'required|exists:teachers,id',
             'subject_id' => 'required|exists:subjects,id',
-            'class_id'   => 'required|exists:classes,id',
+            'class_id'   => 'required|exists:school_classes,id',
         ]);
 
         if (TeacherSubject::where($validated)->exists()) {
@@ -644,7 +658,7 @@ class AuthController extends Controller
         $validated = $request->validate([
             'teacher_id' => 'required|exists:teachers,id',
             'subject_id' => 'required|exists:subjects,id',
-            'class_id'   => 'required|exists:classes,id',
+            'class_id'   => 'required|exists:school_classes,id',
         ]);
 
         if (TeacherSubject::where($validated)->where('id', '!=', $ts->id)->exists()) {
@@ -697,11 +711,14 @@ class AuthController extends Controller
         ]);
 
         if ($request->filled('search')) {
-            $query->whereHas('student.user', fn($q) =>
-                $q->where('name', 'like', '%'.$request->search.'%')
-            )->orWhereHas('teacherSubject.teacher.user', fn($q) =>
-                $q->where('name', 'like', '%'.$request->search.'%')
-            );
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->whereHas('student.user', fn($q) =>
+                    $q->where('name', 'like', '%'.$search.'%')
+                )->orWhereHas('teacherSubject.teacher.user', fn($q) =>
+                    $q->where('name', 'like', '%'.$search.'%')
+                );
+            });
         }
 
         if ($request->filled('type')) {

@@ -546,6 +546,14 @@
         <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">Due Date</label><input type="date" id="tDue" class="form-input"></div>
         <div style="display:none"><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">Max Grade</label><input type="number" id="tGrade" value="100" class="form-input"></div>
       </div>
+      <div>
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">Images / Attachments</label>
+        <div class="upload-zone" id="tDZ" onclick="document.getElementById('tFI').click()" style="border:2px dashed #cbd5e1;border-radius:10px;padding:16px;text-align:center;cursor:pointer">
+          <p style="font-size:12px;font-weight:600;color:#6366f1">Click to add images or files</p>
+        </div>
+        <input type="file" id="tFI" multiple accept="image/*,.pdf,.doc,.docx" style="display:none" onchange="previewTaskFiles(this)">
+        <div id="tFP" style="display:none;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:7px;margin-top:8px"></div>
+      </div>
     </div>
     <div style="display:flex;gap:10px;margin-top:18px">
       <button onclick="closeModal('mTask')" class="btn-secondary" style="flex:1;justify-content:center">Cancel</button>
@@ -1209,7 +1217,17 @@ function formatDateShort(d) { return d ? new Date(d).toLocaleDateString('en-US',
 async function apiFetch(url, opts={}) {
   const res  = await fetch(url, {...opts, headers:{'X-Requested-With':'XMLHttpRequest','Accept':'application/json','X-CSRF-TOKEN':CSRF,...(opts.headers||{})}});
   const text = await res.text();
-  try { return {ok:res.ok, data:JSON.parse(text)}; } catch { return {ok:false, data:{}}; }
+  try {
+    const data = JSON.parse(text);
+    if (!res.ok && !data.message && data.errors) {
+      const first = Object.values(data.errors)[0];
+      data.message = Array.isArray(first) ? first[0] : first;
+    }
+    return {ok:res.ok, status:res.status, data};
+  } catch {
+    const message = res.status === 419 ? 'Session expired. Please refresh the page.' : `Request failed (${res.status}).`;
+    return {ok:false, status:res.status, data:{message}};
+  }
 }
 
 function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('ov').classList.toggle('on'); }
@@ -1884,7 +1902,24 @@ async function removeStudentFromClass(studentId) {
 
 //  TASKS
 
-let allTasks=[], editTaskId=null;
+let allTasks=[], editTaskId=null, pendingFiles=[];
+
+function previewTaskFiles(input) {
+  pendingFiles = Array.from(input.files);
+  const grid = document.getElementById('tFP');
+  if (!pendingFiles.length) { grid.style.display = 'none'; return; }
+  grid.style.display = 'grid';
+  grid.innerHTML = pendingFiles.map((f, i) =>
+    `<div style="position:relative;background:#f1f5f9;border-radius:8px;padding:6px;font-size:10px;text-align:center">${f.name.slice(0,12)}<button type="button" onclick="removeTaskFile(${i})" style="position:absolute;top:-4px;right:-4px;width:16px;height:16px;border-radius:50%;background:#ef4444;color:#fff;border:none;font-size:10px;cursor:pointer">×</button></div>`
+  ).join('');
+}
+function removeTaskFile(i) {
+  pendingFiles.splice(i, 1);
+  const dt = new DataTransfer();
+  pendingFiles.forEach(f => dt.items.add(f));
+  document.getElementById('tFI').files = dt.files;
+  previewTaskFiles(document.getElementById('tFI'));
+}
 
 async function loadTasks() {
   const {ok,data} = await apiFetch('/admin/tasks');
@@ -1920,6 +1955,7 @@ function openAddTask() {
   document.getElementById('tSaveBtn').textContent='Add Task';
   ['tTitle','tDesc','tDue'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('tGrade').value='100';
+  pendingFiles=[]; document.getElementById('tFI').value=''; document.getElementById('tFP').style.display='none';
   populateTeacherSubjectSelect('tTS');
   openModal('mTask');
 }
@@ -1932,7 +1968,8 @@ async function openEditTask(id) {
   document.getElementById('tTitle').value=t.title;
   document.getElementById('tDesc').value=t.description||'';
   document.getElementById('tDue').value=t.due_date||'';
-  document.getElementById('tGrade').value='100';
+  document.getElementById('tGrade').value=t.max_grade||'100';
+  pendingFiles=[]; document.getElementById('tFI').value=''; document.getElementById('tFP').style.display='none';
   await populateTeacherSubjectSelect('tTS');
   document.getElementById('tTS').value=t.teacher_subject_id;
   openModal('mTask');
@@ -1941,8 +1978,17 @@ async function openEditTask(id) {
 async function saveTask() {
   const title=document.getElementById('tTitle').value.trim(), ts=document.getElementById('tTS').value;
   if(!title||!ts){ alert('Title and Teacher Subject required.'); return; }
-  const {ok,data} = await apiFetch(editTaskId?`/admin/tasks/${editTaskId}`:'/admin/tasks',{method:editTaskId?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,description:document.getElementById('tDesc').value.trim(),teacher_subject_id:ts,due_date:document.getElementById('tDue').value||null})});
-  if(ok){ closeModal('mTask'); loadTasks(); } else { alert(data.message||'Something went wrong.'); }
+  const fd=new FormData();
+  fd.append('title', title);
+  fd.append('description', document.getElementById('tDesc').value.trim());
+  fd.append('teacher_subject_id', ts);
+  if (document.getElementById('tDue').value) fd.append('due_date', document.getElementById('tDue').value);
+  const maxGrade = document.getElementById('tGrade').value;
+  if (maxGrade) fd.append('max_grade', maxGrade);
+  pendingFiles.forEach((f, i) => fd.append(`files[${i}]`, f));
+  if (editTaskId) fd.append('_method', 'PUT');
+  const {ok,data} = await apiFetch(editTaskId?`/admin/tasks/${editTaskId}`:'/admin/tasks',{method:'POST',body:fd});
+  if(ok){ closeModal('mTask'); loadTasks(); } else { alert(data.message||Object.values(data.errors||{})[0]?.[0]||'Something went wrong.'); }
 }
 
 
