@@ -147,7 +147,7 @@
                         </a>
                     </div>
                     <!-- Stats row -->
-                    <div class="flex gap-8 mt-10 justify-center lg:justify-start text-center">
+                    <div class="flex gap-8 mt-10 justiy-center lg:justify-start text-center">
                         <div>
                             <p class="text-2xl font-extrabold text-sky-500">100%</p>
                             <p class="text-xs text-slate-400 font-semibold mt-0.5">Web-based</p>

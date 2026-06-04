@@ -917,24 +917,41 @@
           <!-- Left: Classes + Activity -->
           <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
 
-            <!-- Dashboard Classes Section -->
+            <!-- Assigned Classes Section -->
             <div class="card" style="overflow:hidden">
               <div style="padding:12px 16px;border-bottom:1px solid #d1faf4;display:flex;align-items:center;justify-content:space-between">
                 <div style="display:flex;align-items:center;gap:8px">
-                  <h2 style="font-size:13px;font-weight:600;color:#1e293b">My Classes</h2>
+                  <h2 style="font-size:13px;font-weight:600;color:#1e293b">Assigned Classes</h2>
                   <span id="dashClsCount" class="badge" style="background:#f0fdf9;color:#0d9488">--</span>
                 </div>
                 <div style="display:flex;align-items:center;gap:8px">
-                  <button onclick="openAddClass()" style="display:flex;align-items:center;gap:5px;padding:5px 10px;border-radius:7px;background:#0d9488;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:600;font-family:'Syne',sans-serif">
-                    <svg style="width:10px;height:10px" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
-                    Add
-                  </button>
-                  <a onclick="goToPage('cls',document.getElementById('n-cls'))" style="font-size:12px;color:#0d9488;cursor:pointer;font-weight:600">View all →</a>
+                  <a onclick="goToPage('subj',document.getElementById('n-subj'))" style="font-size:12px;color:#0d9488;cursor:pointer;font-weight:600">View all →</a>
                 </div>
               </div>
 
               <div id="dashClsGrid" class="dash-cls-grid">
-                <div style="grid-column:1/-1;padding:30px;text-align:center;color:#94a3b8;font-size:13px">Loading classes...</div>
+                <div style="grid-column:1/-1;padding:30px;text-align:center;color:#94a3b8;font-size:13px">Loading assigned classes...</div>
+              </div>
+            </div>
+
+            <!-- Dashboard Tasks Section -->
+            <div class="card" style="overflow:hidden">
+              <div style="padding:12px 16px;border-bottom:1px solid #d1faf4;display:flex;align-items:center;justify-content:space-between">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <h2 style="font-size:13px;font-weight:600;color:#1e293b">My Tasks</h2>
+                  <span id="dashTasksCount" class="badge" style="background:#f0fdf9;color:#0d9488">--</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px">
+                  <button onclick="openAddTask()" style="display:flex;align-items:center;gap:5px;padding:5px 10px;border-radius:7px;background:#0d9488;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:600;font-family:'Syne',sans-serif">
+                    <svg style="width:10px;height:10px" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                    New
+                  </button>
+                  <a onclick="goToPage('tasks',document.getElementById('n-tasks'))" style="font-size:12px;color:#0d9488;cursor:pointer;font-weight:600">View all →</a>
+                </div>
+              </div>
+
+              <div id="dashTasksGrid" class="dash-cls-grid">
+                <div style="grid-column:1/-1;padding:30px;text-align:center;color:#94a3b8;font-size:13px">Loading tasks...</div>
               </div>
             </div>
 
@@ -945,7 +962,22 @@
                 <a onclick="goToPage('subs',document.getElementById('n-subs'))" style="font-size:12px;color:#0d9488;cursor:pointer;font-weight:600">View all →</a>
               </div>
               <div id="actList">
-                <div style="padding:36px;text-align:center;color:#94a3b8;font-size:13px">No recent activity</div>
+                @forelse($recentActivity as $act)
+                  <div style="padding:12px 16px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
+                    <div>
+                      <p style="font-size:13px;font-weight:600;color:#1e293b">{{ $act['student'] }}</p>
+                      <p style="font-size:11px;color:#64748b">{{ $act['task'] }} - {{ $act['subject'] }}</p>
+                    </div>
+                    <div style="text-align:right">
+                      <span class="badge" style="background:#f0fdf9;color:#0d9488;text-transform:capitalize">{{ $act['status'] }}</span>
+                      @if($act['grade'] !== null)
+                        <p style="font-size:11px;font-weight:700;color:#0d9488;margin-top:4px">Grade: {{ $act['grade'] }}</p>
+                      @endif
+                    </div>
+                  </div>
+                @empty
+                  <div style="padding:36px;text-align:center;color:#94a3b8;font-size:13px">No recent activity</div>
+                @endforelse
               </div>
             </div>
           </div>
@@ -1212,9 +1244,9 @@ let dashClasses = [];
 
 async function loadDashData() {
   // Load classes for dashboard
-  const {ok, data} = await apiFetch('/teacher/classes');
+  const {ok, data} = await apiFetch('/teacher/subjects');
   if (ok) {
-    dashClasses = Array.isArray(data) ? data : (data.classes || []);
+    dashClasses = Array.isArray(data) ? data : (data.subjects || []);
     document.getElementById('dashClsCount').textContent = dashClasses.length;
     renderDashClasses();
   }
@@ -1222,14 +1254,45 @@ async function loadDashData() {
   const {ok:sOk, data:stats} = await apiFetch('/teacher/tasks');
   if (sOk) {
     document.getElementById('dTotalTasks').textContent = Array.isArray(stats) ? stats.length : '--';
+    document.getElementById('dashTasksCount').textContent = Array.isArray(stats) ? stats.length : '--';
+    renderDashTasks(Array.isArray(stats) ? stats.slice(0, 4) : []);
   }
+}
+
+function renderDashTasks(tasks) {
+  const grid = document.getElementById('dashTasksGrid');
+  if (!tasks.length) {
+    grid.innerHTML = `<div style="grid-column:1/-1;padding:30px;text-align:center;color:#94a3b8;font-size:13px">
+      No tasks yet. <button onclick="openAddTask()" style="color:#0d9488;font-weight:600;background:none;border:none;cursor:pointer;font-family:'Syne',sans-serif">Create one →</button>
+    </div>`;
+    return;
+  }
+  
+  grid.innerHTML = tasks.map((t) => {
+    const subj = t.teacher_subject?.subject?.name || '--';
+    const cls = t.teacher_subject?.class?.name || '--';
+    const dueStr = t.due_date ? new Date(t.due_date).toLocaleDateString() : 'No due date';
+    return `
+      <div class="dash-cls-card" onclick="openDetail(${t.id})" style="border-top:3px solid #0d9488;cursor:pointer;display:flex;flex-direction:column;justify-content:space-between">
+        <div style="padding:14px">
+          <h3 style="font-size:14px;font-weight:700;color:#1e293b;margin-bottom:6px">${t.title}</h3>
+          <p style="font-size:11px;color:#64748b;margin-bottom:6px">${subj} - ${cls}</p>
+          <p style="font-size:10px;font-weight:600;color:#0d9488;background:#f0fdf9;padding:3px 6px;border-radius:4px;display:inline-block;border:1px solid #ccfbf1">Due: ${dueStr}</p>
+        </div>
+        <div style="padding:10px 14px;background:#f8fafc;border-top:1px solid #f1f5f9;display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:10px;font-weight:600;color:#64748b">Submissions</span>
+          <span style="font-size:12px;font-weight:700;color:#1e293b">${t.submissions_count || t.pending_count || 0}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
 }
 
 function renderDashClasses() {
   const grid = document.getElementById('dashClsGrid');
   if (!dashClasses.length) {
     grid.innerHTML = `<div style="grid-column:1/-1;padding:30px;text-align:center;color:#94a3b8;font-size:13px">
-      No classes yet. <button onclick="openAddClass()" style="color:#0d9488;font-weight:600;background:none;border:none;cursor:pointer;font-family:'Syne',sans-serif">Create one →</button>
+      No assigned classes yet. <button onclick="goToPage('subj',document.getElementById('n-subj'))" style="color:#0d9488;font-weight:600;background:none;border:none;cursor:pointer;font-family:'Syne',sans-serif">Add one →</button>
     </div>`;
     return;
   }
@@ -1241,43 +1304,35 @@ function renderDashClasses() {
 
   grid.innerHTML = dashClasses.map((c, i) => {
     const [from, to] = COLORS[i % COLORS.length];
-    const initial = (c.name||'?')[0].toUpperCase();
-    const teacher = c.teacher_name || '--';
-    const code    = c.join_code || c.code || '--';
-    const students = c.student_count ?? c.students_count ?? 0;
-    const tasks    = c.task_count   ?? c.tasks_count    ?? 0;
+    const subject = c.subject_name || '--';
+    const classn = c.class_name || '--';
+    const students = c.students_count || 0;
+    const tasks    = c.tasks_count || 0;
     return `
-      <div class="dash-cls-card" onclick="openClassPanel(${c.id})" style="border-top:3px solid ${from}">
-        <div style="display:flex;align-items:center;gap:9px;margin-bottom:9px">
-          <div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,${from},${to});display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff;font-weight:800;font-size:15px">${initial}</div>
-          <div style="min-width:0;flex:1">
-            <p style="font-size:13px;font-weight:700;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.name}</p>
-            <p style="font-size:10px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.subject_name || '--'}</p>
+      <div class="dash-cls-card" onclick="goToPage('subj',document.getElementById('n-subj'))" style="border-top:3px solid ${from};cursor:pointer">
+        <div style="padding:16px;display:flex;gap:12px;align-items:center">
+          <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,${from},${to});display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;font-weight:800;flex-shrink:0">
+            ${subject[0].toUpperCase()}
+          </div>
+          <div style="min-width:0">
+            <h3 style="font-size:14px;font-weight:700;color:#1e293b;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${subject}</h3>
+            <p style="font-size:11px;color:#64748b;display:flex;align-items:center;gap:4px">
+              ${classn}
+            </p>
           </div>
         </div>
-        <div style="display:flex;align-items:center;gap:5px;margin-bottom:9px">
-          <div style="width:18px;height:18px;border-radius:50%;background:${from};display:flex;align-items:center;justify-content:center;color:#fff;font-size:7px;font-weight:700;flex-shrink:0">${getInitials(teacher)}</div>
-          <p style="font-size:11px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${teacher}</p>
-        </div>
-        <div style="display:flex;gap:6px;margin-bottom:8px">
-          <div style="flex:1;background:#f0fdf9;border-radius:6px;padding:5px;text-align:center;border:1px solid #d1faf4">
-            <p style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:#0d9488">${students}</p>
-            <p style="font-size:8px;color:#64748b;font-weight:600">Students</p>
+        <div style="padding:10px 16px;background:#f8fafc;border-top:1px solid #f1f5f9;display:flex;justify-content:space-between;align-items:center">
+          <div style="display:flex;align-items:center;gap:4px;color:#64748b;font-size:11px">
+            <svg style="width:12px;height:12px" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+            ${students} Students
           </div>
-          <div style="flex:1;background:#f0fdf9;border-radius:6px;padding:5px;text-align:center;border:1px solid #d1faf4">
-            <p style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:#0d9488">${tasks}</p>
-            <p style="font-size:8px;color:#64748b;font-weight:600">Tasks</p>
-          </div>
-          <div style="flex:1;background:#f0fdf9;border-radius:6px;padding:5px;text-align:center;border:1px solid #d1faf4">
-            <p style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;color:#0d9488;letter-spacing:0.04em">${code}</p>
-            <p style="font-size:8px;color:#64748b;font-weight:600">Code</p>
+          <div style="display:flex;align-items:center;gap:4px;color:#64748b;font-size:11px">
+            <svg style="width:12px;height:12px" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+            ${tasks} Tasks
           </div>
         </div>
-        <div style="display:flex;align-items:center;gap:4px;color:#0d9488">
-          <p style="font-size:10px;font-weight:600">View details</p>
-          <svg style="width:10px;height:10px" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
-        </div>
-      </div>`;
+      </div>
+    `;
   }).join('');
 }
 

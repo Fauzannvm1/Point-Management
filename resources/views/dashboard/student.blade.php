@@ -845,15 +845,6 @@
             </div>
           </div>
 
-          <div class="card" style="overflow:hidden;margin-top:14px">
-            <div style="padding:12px 14px;border-bottom:1px solid #dbeafe;display:flex;align-items:center;justify-content:space-between">
-              <h2 style="font-size:13px;font-weight:600;color:#1e293b">My Enrolled Classes</h2>
-              <a onclick="goToPage('classes',document.getElementById('n-classes'))" style="font-size:12px;color:#2563eb;cursor:pointer;font-weight:600">Manage →</a>
-            </div>
-            <div id="dashClassList"></div>
-            <div id="dashClassEmpty" class="empty-state" style="display:none"><p>No classes yet</p></div>
-          </div>
-
           <div class="card" style="overflow:hidden">
             <div style="padding:12px 14px;border-bottom:1px solid #dbeafe">
               <h2 style="font-size:13px;font-weight:600;color:#1e293b">Quick Actions</h2>
@@ -868,6 +859,15 @@
               <button onclick="goToPage('pts',document.getElementById('n-pts'))"   style="width:100%;display:flex;align-items:center;justify-content:center;gap:7px;padding:9px;border-radius:9px;background:#eff6ff;color:#2563eb;border:none;cursor:pointer;font-size:12.5px;font-weight:600;font-family:'Syne',sans-serif">My Points</button>
               <button onclick="goToPage('rep',document.getElementById('n-rep'))"   style="width:100%;display:flex;align-items:center;justify-content:center;gap:7px;padding:9px;border-radius:9px;background:#eff6ff;color:#2563eb;border:none;cursor:pointer;font-size:12.5px;font-weight:600;font-family:'Syne',sans-serif">My Report</button>
             </div>
+          </div>
+
+          <div class="card" style="overflow:hidden">
+            <div style="padding:12px 14px;border-bottom:1px solid #dbeafe;display:flex;align-items:center;justify-content:space-between">
+              <h2 style="font-size:13px;font-weight:600;color:#1e293b">My Enrolled Classes</h2>
+              <a onclick="goToPage('classes',document.getElementById('n-classes'))" style="font-size:12px;color:#2563eb;cursor:pointer;font-weight:600">Manage →</a>
+            </div>
+            <div id="dashClassList"></div>
+            <div id="dashClassEmpty" class="empty-state" style="display:none"><p>No classes yet</p></div>
           </div>
         </div>
       </div>
@@ -1250,7 +1250,7 @@ async function loadClasses() {
               <p style="font-size:11px;color:#64748b;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${subject}</p>
             </div>
           </div>
-          <button onclick="confirmLeaveClass(${cls.id},'${(cls.name||'').replace(/'/g,"\\'")}'" style="flex-shrink:0;background:#fef2f2;border:1px solid #fee2e2;border-radius:7px;padding:4px 7px;cursor:pointer;color:#ef4444;font-size:10px;font-weight:600;font-family:'Syne',sans-serif;transition:all 0.15s" onmouseover="this.style.background='#ef4444';this.style.color='#fff'" onmouseout="this.style.background='#fef2f2';this.style.color='#ef4444'">Leave</button>
+          <button onclick="confirmLeaveClass(${cls.id},'${(cls.name||'').replace(/'/g,"\\'")}')" style="flex-shrink:0;background:#fef2f2;border:1px solid #fee2e2;border-radius:7px;padding:4px 7px;cursor:pointer;color:#ef4444;font-size:10px;font-weight:600;font-family:'Syne',sans-serif;transition:all 0.15s" onmouseover="this.style.background='#ef4444';this.style.color='#fff'" onmouseout="this.style.background='#fef2f2';this.style.color='#ef4444'">Leave</button>
         </div>
 
         <!-- Teacher -->

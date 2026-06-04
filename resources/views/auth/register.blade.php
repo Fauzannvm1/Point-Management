@@ -587,7 +587,7 @@
                                 <label for="role"><i class="zmdi zmdi-account material-icons-name"></i></label>
                                 <select name="role" id="role" required>
                                     <option value="" disabled selected>Select your role</option>
-                                    <!-- <option value="admin">Admin</option> -->
+                                    <!-- <option value="admin">Admin</option> <option value="admin">Admin</option> -->
                                     <option value="teacher">Teacher</option>
                                     <option value="student">Student</option>
                                     <!-- <option value="parent">Parent</option> -->
