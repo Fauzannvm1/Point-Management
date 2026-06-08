@@ -1047,14 +1047,10 @@
           <div><h2 style="font-size:15px;font-weight:700;color:#1e293b">My Subjects</h2><p style="font-size:12px;color:#64748b;margin-top:2px">Subjects and classes assigned to you</p></div>
           <button onclick="openAddSubject()" class="btn-primary"><svg style="width:13px;height:13px" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>Add Subject</button>
         </div>
-        <div class="card" style="overflow:hidden">
-          <div style="overflow-x:auto">
-            <table style="width:100%;border-collapse:collapse">
-              <thead><tr class="table-head"><th>#</th><th>Subject</th><th>Class</th><th class="hide-mobile">Students</th><th class="hide-mobile">Tasks</th><th style="text-align:right">Actions</th></tr></thead>
-              <tbody id="subjBody"></tbody>
-            </table>
-            <div id="subjEmpty" class="empty-state" style="display:none"><p>No subjects assigned yet</p></div>
-          </div>
+        <div class="class-grid" id="subjGrid"></div>
+        <div id="subjEmpty" class="empty-state" style="display:none">
+          <svg style="width:40px;height:40px;margin:0 auto 10px;color:#cbd5e1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+          <p>No subjects assigned yet</p>
         </div>
       </div>
 
@@ -1685,18 +1681,36 @@ async function submitGrade() {
 // ===== SUBJECTS =====
 async function loadSubjects() {
   const {ok,data}=await apiFetch('/teacher/subjects'); if(!ok) return;
-  const tbody=document.getElementById('subjBody'), empty=document.getElementById('subjEmpty');
-  if(!data.length){ tbody.innerHTML=''; empty.style.display='block'; return; }
+  const grid=document.getElementById('subjGrid'), empty=document.getElementById('subjEmpty');
+  if(!data.length){ grid.innerHTML=''; empty.style.display='block'; return; }
   empty.style.display='none';
-  tbody.innerHTML=data.map((s,i)=>`
-    <tr class="table-row">
-      <td class="mono" style="font-size:11px;color:#94a3b8">${String(i+1).padStart(2,'0')}</td>
-      <td style="font-weight:600;font-size:13px;color:#1e293b">${s.subject_name||'--'}</td>
-      <td><span class="tag s-active">${s.class_name||'--'}</span></td>
-      <td class="hide-mobile" style="color:#64748b;font-size:13px">${s.students_count||0} students</td>
-      <td class="hide-mobile" style="color:#64748b;font-size:13px">${s.tasks_count||0} tasks</td>
-      <td style="text-align:right"><button onclick="askDelete('subj',${s.id},'${s.subject_name}')" class="btn-danger">Remove</button></td>
-    </tr>`).join('');
+  grid.innerHTML=data.map((s,i)=>{
+    const safeName=(s.subject_name||'').replace(/'/g,"\\'");
+    return `
+    <div class="class-card" style="cursor:pointer" onclick="openClassPanel(${s.class_id})">
+      <div class="class-card-bar"></div>
+      <div style="padding:14px 16px">
+        <div style="display:flex;align-items:start;justify-content:space-between;margin-bottom:10px">
+          <div style="min-width:0;flex:1">
+            <h3 style="font-size:14px;font-weight:700;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.subject_name||'--'}</h3>
+            <p style="font-size:11px;color:#94a3b8;margin-top:2px">${s.class_name||'--'}</p>
+          </div>
+          <div style="display:flex;gap:4px;flex-shrink:0;margin-left:8px" onclick="event.stopPropagation()">
+            <a href="/teacher/classes/${s.class_id}/export" class="btn-primary" style="padding:4px 8px;font-size:10px;text-decoration:none">Export Excel</a>
+            <button onclick="askDelete('subj',${s.id},'${safeName}')" class="btn-danger" style="padding:4px 8px;font-size:10px">Del</button>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          <div style="flex:1;background:#f8fafc;border-radius:8px;padding:7px 10px;text-align:center"><p class="mono" style="font-size:16px;font-weight:700;color:#1e293b">${s.students_count||0}</p><p style="font-size:10px;color:#64748b">Students</p></div>
+          <div style="flex:1;background:#f8fafc;border-radius:8px;padding:7px 10px;text-align:center"><p class="mono" style="font-size:16px;font-weight:700;color:#1e293b">${s.tasks_count||0}</p><p style="font-size:10px;color:#64748b">Tasks</p></div>
+        </div>
+        <div style="margin-top:9px;display:flex;align-items:center;gap:4px;color:#0d9488">
+          <p style="font-size:10px;font-weight:600">Click to view details</p>
+          <svg style="width:10px;height:10px" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
 }
 async function openAddSubject() {
   const {ok,data}=await apiFetch('/teacher/subjects/create'); if(!ok){ alert('Could not load data.'); return; }

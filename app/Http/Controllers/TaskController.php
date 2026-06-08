@@ -229,13 +229,11 @@ class TaskController extends Controller
 
                 imagejpeg($image, $absolutePath, 75);
                 imagedestroy($image);
-                @chmod($absolutePath, 0644);
                 return $path;
             }
         }
 
         $path = $file->store($folder, 'public');
-        @chmod(storage_path('app/public/' . $path), 0644);
         return $path;
     }
 
@@ -750,6 +748,7 @@ class TaskController extends Controller
             ->get()
             ->map(fn($ts) => [
                 'id'             => $ts->id,
+                'class_id'       => $ts->class_id,
                 'subject_name'   => $ts->subject?->name ?? '--',
                 'class_name'     => $ts->class?->name   ?? '--',
                 'tasks_count'    => $ts->tasks_count,

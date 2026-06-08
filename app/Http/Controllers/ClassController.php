@@ -50,7 +50,7 @@ class ClassController extends Controller
      * GET /admin/classes/{id}
      * Single class detail.
      */
-    public function adminShow(int $id): JsonResponse
+    public function adminShow($id): JsonResponse
     {
         $class = SchoolClass::with([
             'teacher:id,name',
@@ -91,7 +91,7 @@ class ClassController extends Controller
      * PUT /admin/classes/{id}
      * Update a class.
      */
-    public function adminUpdate(Request $request, int $id): JsonResponse
+    public function adminUpdate(Request $request, $id): JsonResponse
     {
         $class = SchoolClass::findOrFail($id);
 
@@ -120,7 +120,7 @@ class ClassController extends Controller
      * DELETE /admin/classes/{id}
      * Delete a class.
      */
-    public function adminDestroy(int $id): JsonResponse
+    public function adminDestroy($id): JsonResponse
     {
         $class = SchoolClass::findOrFail($id);
 
@@ -144,7 +144,7 @@ class ClassController extends Controller
      * GET /admin/classes/{id}/students
      * List students enrolled in a class.
      */
-    public function adminStudents(int $id): JsonResponse
+    public function adminStudents($id): JsonResponse
     {
         $class    = SchoolClass::findOrFail($id);
         $students = $this->getStudentList($class);
@@ -156,7 +156,7 @@ class ClassController extends Controller
      * POST /admin/classes/{id}/students
      * Manually enroll a student. Body: { "student_id": 5 }
      */
-    public function adminAddStudent(Request $request, int $id): JsonResponse
+    public function adminAddStudent(Request $request, $id): JsonResponse
     {
         $request->validate(['user_id' => ['required', 'exists:users,id']]);
 
@@ -227,7 +227,7 @@ class ClassController extends Controller
         ], 201);
     }
 
-    public function teacherUpdate(Request $request, int $id): JsonResponse
+    public function teacherUpdate(Request $request, $id): JsonResponse
     {
         $class = SchoolClass::where('id', $id)->where('teacher_id', Auth::id())->firstOrFail();
 
@@ -254,7 +254,7 @@ class ClassController extends Controller
         ]);
     }
 
-    public function teacherDestroy(int $id): JsonResponse
+    public function teacherDestroy($id): JsonResponse
     {
         $class = SchoolClass::where('id', $id)->where('teacher_id', Auth::id())->firstOrFail();
         
@@ -296,7 +296,7 @@ class ClassController extends Controller
      * GET /teacher/classes/{id}
      * Single class detail — teacher must own it.
      */
-    public function teacherShow(int $id): JsonResponse
+    public function teacherShow($id): JsonResponse
     {
         $class = $this->findTeacherClass($id);
 
@@ -311,7 +311,7 @@ class ClassController extends Controller
      * GET /teacher/classes/{id}/students
      * Students in one of the teacher's classes.
      */
-    public function teacherStudents(int $id): JsonResponse
+    public function teacherStudents($id): JsonResponse
     {
         $class = $this->findTeacherClass($id);
 
@@ -344,7 +344,7 @@ class ClassController extends Controller
      * GET /teacher/classes/{id}/code
      * Get the join code to share with students.
      */
-    public function teacherCode(int $id): JsonResponse
+    public function teacherCode($id): JsonResponse
     {
         $class = $this->findTeacherClass($id);
 
@@ -355,7 +355,7 @@ class ClassController extends Controller
      * GET /teacher/classes/{id}/export
      * Export student report to CSV.
      */
-    public function teacherExportStudents(int $id)
+    public function teacherExportStudents($id)
     {
         $class = $this->findTeacherClass($id);
         $students = $this->getStudentList($class);
@@ -445,7 +445,7 @@ class ClassController extends Controller
      * GET /teacher/classes/{id}/report
      * Get JSON report data for class students.
      */
-    public function teacherClassReport(int $id): JsonResponse
+    public function teacherClassReport($id): JsonResponse
     {
         $class = SchoolClass::findOrFail($id);
         
@@ -578,7 +578,7 @@ class ClassController extends Controller
      * DELETE /student/classes/{id}/leave
      * Leave a class.
      */
-    public function studentLeave(int $id): JsonResponse
+    public function studentLeave($id): JsonResponse
     {
         $deleted = ClassEnrollment::where('class_id', $id)
             ->where('user_id', Auth::id())
@@ -593,12 +593,18 @@ class ClassController extends Controller
 
     // PRIVATE HELPERS
 
-    private function findTeacherClass(int $id): SchoolClass
+    private function findTeacherClass($id): SchoolClass
     {
         $class = SchoolClass::with(['subject:id,name'])->findOrFail($id);
 
         if (Auth::user()->role !== 'admin' && $class->teacher_id !== Auth::id()) {
-            abort(403, 'You do not have access to this class.');
+            $teacher = Auth::user()->teacher;
+            $isAssigned = $teacher ? \App\Models\TeacherSubject::where('class_id', $class->id)
+                            ->where('teacher_id', $teacher->id)->exists() : false;
+                            
+            if (!$isAssigned) {
+                abort(403, 'You do not have access to this class.');
+            }
         }
 
         return $class;

@@ -55,6 +55,8 @@ The interface uses a **light sky-blue palette** (`#f0f9ff`, `#bae6fd`, `#0284c7`
 
 The application is designed around three roles: **Admin**, **Teacher**, and **Student**. Registration and dashboards focus on these roles only.
 
+Demo Website Hosted at https://point-management.online, this project is a final semester assignment given by the teacher 
+
 ---
 
 ## Features
@@ -451,6 +453,6 @@ docker run -p 8000:8000 point-management
 
 <br/>
 
-<sub>Laravel 12 · MySQL · Sky-blue vibes · Keep learning ✨</sub>
+<sub>Laravel 12 · MySQL · Keep learning ✨</sub>
 
 </div>
