@@ -1337,13 +1337,21 @@ function renderDashClasses() {
 let currentPanelClassId = null;
 
 async function openClassPanel(classId) {
-  const c = dashClasses.find(x=>x.id===classId) || allClasses.find(x=>x.id===classId);
-  if (!c) return;
+  let c = allClasses.find(x=>x.id===classId) || dashClasses.find(x=>x.id===classId);
+  // dashClasses from /teacher/subjects uses class_id, not id
+  if (!c) c = dashClasses.find(x=>x.class_id===classId);
+  // If still not found locally, fetch from API
+  if (!c) {
+    const {ok, data} = await apiFetch(`/teacher/classes/${classId}`);
+    if (!ok) { showToast('Could not load class details.', 'error'); return; }
+    c = data;
+  }
   currentPanelClassId = classId;
 
   document.getElementById('cpClassId').value = classId;
-  document.getElementById('cpAvatar').textContent = (c.name||'?')[0].toUpperCase();
-  document.getElementById('cpName').textContent = c.name || '--';
+  const displayName = c.name || c.class_name || '?';
+  document.getElementById('cpAvatar').textContent = displayName[0].toUpperCase();
+  document.getElementById('cpName').textContent = displayName;
   document.getElementById('cpCode').textContent = c.join_code || c.code || '--';
   document.getElementById('cpCodeRaw').value    = c.join_code || c.code || '';
   document.getElementById('cpTeacher').textContent = c.teacher_name || 'Not assigned';

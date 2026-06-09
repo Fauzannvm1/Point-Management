@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\ClassController;
+use App\Http\Controllers\FileController;
 
 // Guest Routes (Redirects to dashboard if logged in)
 Route::middleware('guest')->group(function () {
@@ -23,6 +24,9 @@ Route::middleware('auth')->group(function () {
     // Core Dashboard & Auth
     Route::get('/dashboard', [AuthController::class, 'dashboard'])->name('dashboard');
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
+
+    // File Serving (bypasses symlink to avoid 403 on some hosts)
+    Route::get('/files/{path}', [FileController::class, 'serve'])->where('path', '.*')->name('file.serve');
     
     // Shared Task Detail
     Route::get('/task/{task}/detail', [TaskController::class, 'detail']);

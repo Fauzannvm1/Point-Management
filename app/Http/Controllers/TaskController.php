@@ -419,11 +419,11 @@ class TaskController extends Controller
             'due_date'    => $task->due_date,
             'max_grade'   => $task->max_grade,
             'images'      => $task->images->map(fn($i) => [
-                'url'  => Storage::disk('public')->url($i->path),
+                'url'  => route('file.serve', $i->path),
                 'name' => $i->original_name ?? basename($i->path),
             ]),
             'attachments' => $task->attachments->map(fn($a) => [
-                'url'  => Storage::disk('public')->url($a->path),
+                'url'  => route('file.serve', $a->path),
                 'name' => $a->original_name ?? basename($a->path),
             ]),
             'my_submission' => $submission ? [
@@ -432,7 +432,7 @@ class TaskController extends Controller
                 'feedback' => $submission->feedback,
                 'notes'    => $submission->note,
                 'files'    => $submission->files()->get()->map(fn($f) => [
-                    'url'  => Storage::disk('public')->url($f->path),
+                    'url'  => route('file.serve', $f->path),
                     'name' => $f->original_name ?? basename($f->path),
                 ]),
             ] : null,
@@ -622,7 +622,7 @@ class TaskController extends Controller
             'feedback'     => $s->feedback,
             'note'         => $s->note,
             'files'        => $s->files->map(fn($f) => [
-                'url'  => Storage::disk('public')->url($f->path),
+                'url'  => route('file.serve', $f->path),
                 'name' => $f->original_name ?? basename($f->path),
             ]),
             'submitted_at' => $s->submitted_at,
