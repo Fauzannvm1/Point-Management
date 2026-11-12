@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    @include('partials.text-size-head')
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Parent - PointMS</title>
@@ -16,5 +17,8 @@
 </ul>
 <br>
 <a href="{{ route ('logout') }}">Log Out</a>
+
+{{-- Accessibility Text Size Widget --}}
+@include('partials.text-size-widget')
 </body>
 </html>

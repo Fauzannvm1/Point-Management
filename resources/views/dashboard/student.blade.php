@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  @include('partials.text-size-head')
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Student - PointMS</title>
@@ -1719,5 +1720,8 @@ window.onpopstate = function () {
   history.go(1);
 };
 </script>
+
+{{-- Accessibility Text Size Widget --}}
+@include('partials.text-size-widget')
 </body>
 </html>

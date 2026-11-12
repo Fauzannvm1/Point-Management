@@ -6,6 +6,7 @@ use App\Models\SchoolClass;
 use App\Models\ClassEnrollment;
 use App\Models\Subject;
 use App\Models\User;
+use App\Services\SimpleXlsxExporter;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -353,7 +354,8 @@ class ClassController extends Controller
 
     /**
      * GET /teacher/classes/{id}/export
-     * Export student report to CSV.
+     * GET /admin/classes/{id}/export
+     * Export student report to professionally styled .xlsx spreadsheet.
      */
     public function teacherExportStudents($id)
     {
@@ -361,84 +363,106 @@ class ClassController extends Controller
         $students = $this->getStudentList($class);
         
         // Use the teacherSubject relation to get tasks for this specific class
-        // Tasks are associated with teacherSubject, so we query Task where teacher_subject_id points to this class
         $tsIds = \App\Models\TeacherSubject::where('class_id', $class->id)->pluck('id');
         $tasks = \App\Models\Task::whereIn('teacher_subject_id', $tsIds)->orderBy('due_date')->get();
 
-        $headers = [
-            'Content-type'        => 'text/csv',
-            'Content-Disposition' => 'attachment; filename="class_' . $class->code . '_report.csv"',
-            'Pragma'              => 'no-cache',
-            'Cache-Control'       => 'must-revalidate, post-check=0, pre-check=0',
-            'Expires'             => '0'
-        ];
+        // Columns: No, Student Name, [Tasks...], Total Points, Average Points, Class Grade
+        $headers = ['No', 'Student Name'];
+        foreach ($tasks as $task) {
+            $headers[] = $task->title;
+        }
+        $headers[] = 'Total Points';
+        $headers[] = 'Average Points';
+        $headers[] = 'Class Grade';
 
-        // Required columns:
-        // No, Student Name, task columns (task title), Total Points, Average Points, Class Grade
-        $columns = ['No', 'Student Name'];
-        foreach ($tasks as $task) $columns[] = $task->title;
-        $columns[] = 'Total Points';
-        $columns[] = 'Average Points';
-        $columns[] = 'Class Grade';
+        $rows = [];
+        $taskTotals = array_fill(0, count($tasks), 0);
+        $grandTotalPoints = 0;
+        $grandTotalAverage = 0;
 
-        $callback = function() use($students, $columns, $tasks, $class) {
-            $file = fopen('php://output', 'w');
-            $delimiter = ';';
+        foreach ($students as $student) {
+            $rowData = [
+                'Student Name' => $student['name'],
+                'tasks'        => []
+            ];
 
-            // UTF-8 BOM helps Excel detect encoding correctly.
-            fwrite($file, "\xEF\xBB\xBF");
+            $totalPoints = 0;
+            $totalGraded = 0;
 
-            // Use locale-friendly delimiter so Excel opens each field in its own column.
-            fputcsv($file, $columns, $delimiter);
+            $studentModelId = \App\Models\Student::where('user_id', $student['id'])->value('id');
 
-            $rows = [];
-            foreach ($students as $student) {
-                $rowData = ['Student Name' => $student['name']];
-
-                $totalPoints = 0;
-                $totalGraded = 0;
-
-                $studentModelId = \App\Models\Student::where('user_id', $student['id'])->value('id');
-
-                foreach ($tasks as $task) {
-                    $submission = \App\Models\TaskSubmission::where('task_id', $task->id)
-                        ->where('student_id', $studentModelId)
-                        ->first();
-                    
-                    if ($submission && $submission->grade !== null) {
-                        $rowData[$task->title] = $submission->grade;
-                        $totalPoints += $submission->grade;
-                        $totalGraded++;
-                    } else {
-                        $rowData[$task->title] = '0';
-                    }
-                }
+            foreach ($tasks as $tIdx => $task) {
+                $submission = \App\Models\TaskSubmission::where('task_id', $task->id)
+                    ->where('student_id', $studentModelId)
+                    ->first();
                 
-                $rowData['Total Points'] = $totalPoints;
-                $rowData['Average Points'] = $totalGraded > 0 ? round($totalPoints / $totalGraded, 2) : 0;
-                $rowData['Class Grade'] = $class->name;
-                $rows[] = $rowData;
-            }
-
-            usort($rows, function ($a, $b) {
-                return $b['Total Points'] <=> $a['Total Points'];
-            });
-
-            $no = 1;
-            foreach ($rows as $row) {
-                $csvRow = [$no++, $row['Student Name']];
-                foreach ($tasks as $task) {
-                    $csvRow[] = $row[$task->title] ?? '0';
+                if ($submission && $submission->grade !== null) {
+                    $grade = (float)$submission->grade;
+                    $rowData['tasks'][$task->title] = $grade;
+                    $totalPoints += $grade;
+                    $totalGraded++;
+                    $taskTotals[$tIdx] += $grade;
+                } else {
+                    $rowData['tasks'][$task->title] = 0;
                 }
-                $csvRow[] = $row['Total Points'];
-                $csvRow[] = $row['Average Points'];
-                $csvRow[] = $row['Class Grade'];
-                fputcsv($file, $csvRow, $delimiter);
             }
-            fclose($file);
-        };
+            
+            $avgPoints = $totalGraded > 0 ? round($totalPoints / $totalGraded, 2) : 0;
+            $rowData['Total Points']   = $totalPoints;
+            $rowData['Average Points'] = $avgPoints;
+            $rowData['Class Grade']    = $class->name;
 
-        return response()->stream($callback, 200, $headers);
+            $grandTotalPoints  += $totalPoints;
+            $grandTotalAverage += $avgPoints;
+
+            $rows[] = $rowData;
+        }
+
+        // Sort descending by Total Points (highest rank first)
+        usort($rows, function ($a, $b) {
+            return $b['Total Points'] <=> $a['Total Points'];
+        });
+
+        $exportRows = [];
+        $no = 1;
+        foreach ($rows as $row) {
+            $r = [$no++, $row['Student Name']];
+            foreach ($tasks as $task) {
+                $r[] = $row['tasks'][$task->title] ?? 0;
+            }
+            $r[] = $row['Total Points'];
+            $r[] = $row['Average Points'];
+            $r[] = $row['Class Grade'];
+            $exportRows[] = $r;
+        }
+
+        // Calculate class summary/averages row
+        $studentCount = count($students);
+        $summaryRow = [];
+        if ($studentCount > 0) {
+            $summaryRow = ['', 'RATA-RATA KELAS'];
+            foreach ($tasks as $tIdx => $task) {
+                $summaryRow[] = round($taskTotals[$tIdx] / $studentCount, 2);
+            }
+            $summaryRow[] = round($grandTotalPoints / $studentCount, 2);
+            $summaryRow[] = round($grandTotalAverage / $studentCount, 2);
+            $summaryRow[] = $class->name;
+        }
+
+        $cleanCode = Str::slug($class->code ?: $class->name);
+        $filename = 'class_' . $cleanCode . '_report.xlsx';
+
+        return SimpleXlsxExporter::make()
+            ->setTitle('REKAPITULASI NILAI SISWA - POINT MANAGEMENT')
+            ->setSheetName('Laporan Nilai')
+            ->addMetadata('Kelas', $class->name)
+            ->addMetadata('Kode', $class->code ?: '-')
+            ->addMetadata('Total Siswa', (string)$studentCount)
+            ->addMetadata('Tanggal Ekspor', date('d/m/Y H:i'))
+            ->setHeaders($headers)
+            ->addRows($exportRows)
+            ->setSummaryRow($summaryRow)
+            ->download($filename);
     }
 
     /**
